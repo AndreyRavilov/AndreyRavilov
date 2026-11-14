@@ -48,6 +48,91 @@ export class Audio {
     if (this.master) this.master.gain.value = v;
   }
 
+  // ---------- Музыка: медленные минорные аккорды, тёплый пэд ----------
+  // Ничего не загружается: ноты синтезируются. Днём светлее, ночью и под водой — глуше.
+  startMusic() {
+    if (!this.ctx || this.music) return;
+    const ctx = this.ctx;
+    const out = ctx.createGain();
+    out.gain.value = this.musicVolume ?? 0.5;
+    const tone = ctx.createBiquadFilter();
+    tone.type = 'lowpass';
+    tone.frequency.value = 1400;
+    tone.Q.value = 0.4;
+    // простая «реверберация»: задержка с обратной связью
+    const delay = ctx.createDelay(2);
+    delay.delayTime.value = 0.43;
+    const fb = ctx.createGain();
+    fb.gain.value = 0.42;
+    const wet = ctx.createGain();
+    wet.gain.value = 0.35;
+    tone.connect(out);
+    tone.connect(delay);
+    delay.connect(fb).connect(delay);
+    delay.connect(wet).connect(out);
+    out.connect(this.master);
+    this.music = { out, tone, step: 0, timer: null };
+    // ля-минор: Am – F – C – G – Am – Dm – E7 – Am (в герцах, низкий регистр)
+    const N = (m) => 440 * Math.pow(2, (m - 69) / 12);
+    this.chords = [
+      [45, 57, 60, 64], [41, 53, 57, 60], [48, 55, 60, 64], [43, 55, 59, 62],
+      [45, 57, 60, 64], [38, 53, 57, 62], [40, 52, 56, 62], [45, 57, 60, 69],
+    ].map((c) => c.map(N));
+    const play = () => {
+      if (!this.music) return;
+      const chord = this.chords[this.music.step % this.chords.length];
+      this.music.step++;
+      const t = ctx.currentTime;
+      const dur = 9;
+      chord.forEach((f, i) => {
+        for (const det of [-4, 4]) {
+          const o = ctx.createOscillator();
+          o.type = i === 0 ? 'sine' : 'triangle';
+          o.frequency.value = f;
+          o.detune.value = det;
+          const g = ctx.createGain();
+          const peak = (i === 0 ? 0.09 : 0.045) * (i === 3 ? 0.7 : 1);
+          g.gain.setValueAtTime(0.0001, t);
+          g.gain.exponentialRampToValueAtTime(peak, t + 3);
+          g.gain.setValueAtTime(peak, t + dur - 3);
+          g.gain.exponentialRampToValueAtTime(0.0001, t + dur + 1.5);
+          o.connect(g).connect(tone);
+          o.start(t);
+          o.stop(t + dur + 2);
+        }
+      });
+      // редкая «капля» сверху — звонкая нота из аккорда
+      if (Math.random() < 0.6) {
+        const f = chord[1 + Math.floor(Math.random() * 3)] * 4;
+        const o = ctx.createOscillator();
+        o.type = 'sine';
+        o.frequency.value = f;
+        const g = ctx.createGain();
+        const at = t + 2 + Math.random() * 4;
+        g.gain.setValueAtTime(0.0001, at);
+        g.gain.exponentialRampToValueAtTime(0.035, at + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001, at + 3);
+        o.connect(g).connect(tone);
+        o.start(at);
+        o.stop(at + 3.2);
+      }
+      this.music.timer = setTimeout(play, (dur - 1.5) * 1000);
+    };
+    play();
+  }
+
+  // p — время суток 0..1, under — под водой ли камера
+  setMood(p, under) {
+    if (!this.music) return;
+    const f = under ? 450 : 1600 - p * 900;
+    this.music.tone.frequency.setTargetAtTime(f, this.ctx.currentTime, 1.5);
+  }
+
+  setMusicVolume(v) {
+    this.musicVolume = v;
+    if (this.music) this.music.out.gain.setTargetAtTime(v, this.ctx.currentTime, 0.2);
+  }
+
   resume() {
     if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume();
   }

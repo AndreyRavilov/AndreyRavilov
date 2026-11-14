@@ -348,11 +348,14 @@ addEventListener('keydown', (e) => {
 
 // ============ Настройки ============
 const SETTINGS_KEY = 'deepback-settings-v1';
-const settings = { volume: 0.7, voice: 1, sens: 1, invert: false, quality: 'high' };
+const settings = { volume: 0.7, voice: 1, music: 0.5, sens: 1, invert: false, quality: 'high' };
 try { Object.assign(settings, JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}')); } catch (e) { /* без сохранения */ }
 function applySettings() {
   audio.setVolume(settings.volume);
   voice.setVolume(settings.voice);
+  audio.setMusicVolume(settings.music);
+  $('set-music').value = Math.round(settings.music * 100);
+  $('music-out').textContent = Math.round(settings.music * 100);
   $('set-voice').value = Math.round(settings.voice * 100);
   $('voice-out').textContent = Math.round(settings.voice * 100);
   $('set-volume').value = Math.round(settings.volume * 100);
@@ -366,6 +369,7 @@ function applySettings() {
   try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch (e) { /* ignore */ }
 }
 $('set-volume').addEventListener('input', (e) => { settings.volume = e.target.value / 100; applySettings(); });
+$('set-music').addEventListener('input', (e) => { settings.music = e.target.value / 100; applySettings(); });
 $('set-voice').addEventListener('input', (e) => { settings.voice = e.target.value / 100; applySettings(); });
 $('set-sens').addEventListener('input', (e) => { settings.sens = Number(e.target.value); applySettings(); });
 $('set-quality').addEventListener('change', (e) => { settings.quality = e.target.value; applySettings(); });
@@ -1396,6 +1400,7 @@ function cameraEnv(dark) {
   updateEnvironment(dark);
   rain.visible = S.weather === 'storm' && !under && (S.mode === 'day' || S.mode === 'closing');
   audio.setUnderwater(under);
+  audio.setMood(dark, under);
 }
 
 // ============ Меню ============
@@ -1404,6 +1409,8 @@ function leaveMenu() {
   voice.preload();
   audio.init();
   audio.resume();
+  audio.setMusicVolume(settings.music);
+  audio.startMusic();
   $('menu').classList.add('hidden');
 }
 $('start').addEventListener('click', () => {
