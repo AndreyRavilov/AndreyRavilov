@@ -15,7 +15,7 @@ import { RESIDENTS, ICON, makeQuest, WEATHER, rollWeather } from './residents.js
 import { mulberry32 } from './city.js';
 import * as ECO from './economy.js';
 import * as TEX from './textures.js';
-import { createSkyMaterial, sunDirection, Post } from './graphics.js';
+import { createSkyMaterial, sunDirection, Post, addCaustics, CAUSTICS } from './graphics.js';
 import { Ambient } from './ambient.js';
 
 // ============ Рендер и сцена ============
@@ -83,6 +83,11 @@ scene.add(whale);
 const ocean = new Ocean(scene, { detail: TEX.waveDetail() });
 dressWhale(whale, TEX);
 dressMaterials(TEX);
+// каустика на коже Матери и на постройках
+addCaustics(whale.userData.skin);
+for (const k of ['steel', 'rust', 'arkWall', 'arkDome', 'bone', 'trim']) addCaustics(MATERIALS[k]);
+for (const mtl of MATERIALS.walls || []) addCaustics(mtl);
+for (const mtl of MATERIALS.roofs || []) addCaustics(mtl);
 const city = new City(scene);
 const player = new Player(scene);
 const audio = new Audio();
@@ -169,6 +174,9 @@ function applyTime(p) {
   skyMat.uniforms.uSunColor.value.copy(sun.color);
   skyMat.uniforms.uTime.value = S.time;
   ocean.mat.uniforms.uSunDir.value.copy(sunDir);
+  CAUSTICS.uLevel.value = ocean.level;
+  CAUSTICS.uCTime.value = S.time;
+  CAUSTICS.uCStrength.value = Math.max(0, 1 - p * 1.25) * 0.7;
   ocean.mat.uniforms.uSunColor.value.copy(sun.color).multiplyScalar(Math.max(0, Math.min(1, sunDir.y * 6 + 0.2)));
   ocean.mat.uniforms.uSky.value.copy(skyMat.uniforms.horizon.value).lerp(skyMat.uniforms.top.value, 0.35);
   const W = S.weather;

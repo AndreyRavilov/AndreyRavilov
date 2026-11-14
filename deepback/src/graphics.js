@@ -176,3 +176,44 @@ export class Post {
     this.composer.render(dt);
   }
 }
+
+// ---------- Каустика: пляшущие блики света на всём, что под водой ----------
+export const CAUSTICS = {
+  uLevel: { value: 3 },
+  uCTime: { value: 0 },
+  uCStrength: { value: 0.6 },
+  uCColor: { value: new THREE.Color(0x9fe8ff) },
+};
+
+export function addCaustics(mat) {
+  mat.onBeforeCompile = (shader) => {
+    Object.assign(shader.uniforms, CAUSTICS);
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vWPosC;')
+      .replace('#include <project_vertex>', '#include <project_vertex>\nvWPosC = (modelMatrix * vec4(transformed, 1.0)).xyz;');
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', `#include <common>
+        varying vec3 vWPosC;
+        uniform float uLevel; uniform float uCTime; uniform float uCStrength; uniform vec3 uCColor;
+        float causticAt(vec2 p, float t) {
+          vec2 i = p; float c = 1.0; float inten = 0.005;
+          for (int n = 0; n < 4; n++) {
+            float tt = t * (1.0 - (3.5 / float(n + 1)));
+            i = p + vec2(cos(tt - i.x) + sin(tt + i.y), sin(tt - i.y) + cos(tt + i.x));
+            vec2 q = vec2(p.x / (sin(i.x + tt) / inten + 1e-4), p.y / (cos(i.y + tt) / inten + 1e-4));
+            c += 1.0 / max(length(q), 1e-3);
+          }
+          c = clamp(c / 4.0, 0.0, 2.0); c = 1.17 - pow(c, 1.4);
+          return clamp(pow(abs(c), 8.0), 0.0, 1.5);
+        }`)
+      .replace('#include <dithering_fragment>', `#include <dithering_fragment>
+        float depthC = uLevel - vWPosC.y;
+        if (depthC > 0.0 && uCStrength > 0.001) {
+          float k = smoothstep(0.0, 1.5, depthC) * exp(-depthC * 0.08);
+          float cs = causticAt(vWPosC.xz * 0.35, uCTime * 0.6);
+          gl_FragColor.rgb += uCColor * cs * k * uCStrength;
+        }`);
+  };
+  mat.customProgramCacheKey = () => 'caustics';
+  mat.needsUpdate = true;
+}

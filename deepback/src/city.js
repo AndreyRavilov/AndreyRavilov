@@ -49,6 +49,8 @@ function std(color) {
 }
 const wallMats = WALLS.map(std);
 const roofMats = ROOFS.map(std);
+M.walls = wallMats;
+M.roofs = roofMats;
 
 export function mulberry32(a) {
   return function () {
