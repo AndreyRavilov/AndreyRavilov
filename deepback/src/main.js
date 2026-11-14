@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { buildWhale, dressWhale, backHeight, backU, BLOWHOLE, WHALE } from './whale.js';
 import { Ocean } from './ocean.js';
-import { City, HATCH, ITEM, MATERIALS, dressMaterials } from './city.js';
+import { City, HATCH, SPAWN, ITEM, MATERIALS, dressMaterials } from './city.js';
 import { Player, CAPACITY } from './player.js';
 import { Audio } from './audio.js';
 import { INTRO, LORE, ENDINGS, NIGHT_LINES } from './lore.js';
@@ -524,7 +524,7 @@ function startDay() {
   navGrid = NAV.buildGrid((x, z) => backU(x, z) >= 0.97 || city.overlaps(x, z, 0.8));
   S.navTimer = 0;
   S.navPath = null;
-  const sp = new THREE.Vector3(HATCH.x, 0, HATCH.z + 6);
+  const sp = SPAWN.clone();
   sp.y = city.groundAt(sp.x, sp.z) + 0.1;
   player.reset(sp);
   const nDeep = S.cycle >= 4 ? 2 : S.cycle >= 2 ? 1 : 0;

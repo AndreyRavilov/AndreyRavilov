@@ -8,6 +8,8 @@ import { mergeGeometries } from '../vendor/addons/utils/BufferGeometryUtils.js';
 export const STEP = 0.7;
 export const HATCH = new THREE.Vector3(0, 0, 13);
 HATCH.y = backHeight(HATCH.x, HATCH.z);
+// здесь ныряльщик просыпается каждое утро
+export const SPAWN = new THREE.Vector3(HATCH.x, 0, HATCH.z + 6);
 
 export const ITEM = {
   food: { name: 'Рыба', weight: 1, icon: '🐟' },
@@ -242,6 +244,8 @@ export class City {
       const u = uMin + rng() * (uMax - uMin);
       const { x, z } = pointOnBack(u, th);
       if (Math.hypot(x - HATCH.x, z - HATCH.z) < 6) continue;
+      // площадка у шлюза, где утром стоит ныряльщик, всегда свободна
+      if (Math.abs(x - SPAWN.x) < clear + 1.5 && z > HATCH.z && z < SPAWN.z + clear + 1.5) continue;
       if (!this.overlaps(x, z, clear)) return { x, z };
     }
     return null;

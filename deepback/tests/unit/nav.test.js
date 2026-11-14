@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import * as NAV from '../../src/nav.js';
-import { City, HATCH } from '../../src/city.js';
+import { City, HATCH, SPAWN } from '../../src/city.js';
 import { backU } from '../../src/whale.js';
 
 // маленькое поле 20×20 м со стеной посередине и проходом сверху
@@ -73,4 +73,13 @@ test('авто-режим: что выбирает навигатор', () => {
   assert.equal(NAV.autoTarget({ ...base, weight: 8, carried: ['fuel', 'fuel', 'scrap'] }), 'hatch', 'рюкзак полон');
   assert.equal(NAV.autoTarget({ ...base, p: 0.8 }), 'hatch', 'вечер — домой');
   assert.equal(NAV.autoTarget({ ...base, food: 2, carried: ['food', 'food'], weight: 2 }), 'any', 'несёшь достаточно рыбы');
+});
+
+test('утренняя площадка у шлюза свободна в любом городе (регрессия: дом на точке старта)', () => {
+  // сид 776151274 раньше ставил дом прямо на ныряльщика
+  for (const seed of [776151274, 1, 2, 3, 4, 5, 6, 7, 8, 9]) {
+    const city = new City(new THREE.Scene());
+    city.generate(seed, 1, 0, 7, { keepsake: true });
+    assert.ok(!city.overlaps(SPAWN.x, SPAWN.z, 1.2), `сид ${seed}: на точке старта препятствие`);
+  }
 });

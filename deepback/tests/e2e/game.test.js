@@ -41,7 +41,7 @@ test('ходьба клавишей W двигает ныряльщика', asyn
   await waitFor(page, (p0) => {
     const p = window.__deepback.player.pos;
     return Math.hypot(p.x - p0[0], p.z - p0[2]) > 1.5;
-  }, p0);
+  }, p0, 120000); // программный рендер в CI даёт 1–3 кадра в секунду
   await page.keyboard.up('KeyW');
 });
 
