@@ -181,7 +181,6 @@ const needFuel = () => ECO.needFuel(S.cycle);
 const plural = ECO.plural;
 
 // ============ Ввод ============
-const isTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
 const keys = new Set();
 const pressed = new Set();
 let yaw = 0;
@@ -273,11 +272,7 @@ $('to-menu').addEventListener('click', () => {
   setPause(false);
   S.mode = 'menu';
   $('hud').classList.add('hidden');
-  $('touch').classList.add('hidden');
   location.reload(); // сохранение уже записано утром — меню предложит продолжить
-});
-$('pausebtn').addEventListener('click', () => {
-  if (S.mode === 'day' || S.mode === 'closing') setPause(true);
 });
 addEventListener('keydown', (e) => {
   if ((e.code === 'Escape' || e.code === 'KeyP') && (S.mode === 'day' || S.mode === 'closing') && $('modal').classList.contains('hidden')) {
@@ -329,11 +324,6 @@ function updateHud() {
   $('arrow').style.transform = `rotate(${ang}rad)`;
   $('dist').textContent = Math.round(Math.hypot(dx, dz)) + ' м';
   $('hud').classList.toggle('alarm', p > 0.85 && S.mode === 'day');
-  if (isTouch) {
-    // кнопка паузы и компас — сразу под верхними панелями, какой бы высоты они ни были
-    const top = $('topbar').getBoundingClientRect().bottom - $('hud').getBoundingClientRect().top + 8;
-    $('hud').style.setProperty('--below-top', `${top}px`);
-  }
   const W = WEATHER[S.weather];
   $('weather').textContent = `${W.icon} ${W.name}`;
   const q = S.quest;
@@ -653,7 +643,6 @@ const world = {
   ocean,
   current: 0,
   groundAt: (x, z, y) => city.groundAt(x, z, y),
-  axis: null,
 };
 
 function nearestPickup() {
@@ -977,6 +966,7 @@ function updateCamera(dt) {
     scene.fog.far = S.weather === 'fog' && S.mode !== 'menu' ? 55 : S.weather === 'storm' && S.mode !== 'menu' ? 260 : 700;
   }
   document.body.classList.toggle('underwater', under);
+  rain.visible = S.weather === 'storm' && !under && S.mode !== 'menu' && S.mode !== 'night';
   audio.setUnderwater(under);
 }
 
@@ -1006,74 +996,9 @@ if (saved && saved.pop > 0) {
   });
 }
 
-// ============ Сенсорное управление ============
-if (isTouch) {
-  document.body.classList.add('touch');
-  $('touch').classList.remove('hidden');
-  const stick = $('stick');
-  const knob = $('knob');
-  let stickId = null;
-  let lookId = null;
-  let lastX = 0;
-  let lastY = 0;
-  const setStick = (t) => {
-    const r = stick.getBoundingClientRect();
-    let dx = t.clientX - (r.left + r.width / 2);
-    let dy = t.clientY - (r.top + r.height / 2);
-    const max = r.width / 2;
-    const l = Math.hypot(dx, dy);
-    if (l > max) { dx *= max / l; dy *= max / l; }
-    knob.style.transform = `translate(${dx}px, ${dy}px)`;
-    world.axis = { x: dx / max, z: dy / max };
-  };
-  stick.addEventListener('touchstart', (e) => {
-    e.preventDefault();
-    const t = e.changedTouches[0];
-    stickId = t.identifier;
-    setStick(t);
-  }, { passive: false });
-  canvas.addEventListener('touchstart', (e) => {
-    const t = e.changedTouches[0];
-    if (lookId === null) { lookId = t.identifier; lastX = t.clientX; lastY = t.clientY; }
-    audio.resume();
-  }, { passive: true });
-  addEventListener('touchmove', (e) => {
-    for (const t of e.changedTouches) {
-      if (t.identifier === stickId) setStick(t);
-      else if (t.identifier === lookId) {
-        const k = 0.006 * settings.sens;
-        yaw -= (t.clientX - lastX) * k;
-        pitch = Math.max(-0.45, Math.min(1.25, pitch + (t.clientY - lastY) * k * (settings.invert ? -1 : 1)));
-        lastX = t.clientX;
-        lastY = t.clientY;
-      }
-    }
-  }, { passive: true });
-  const end = (e) => {
-    for (const t of e.changedTouches) {
-      if (t.identifier === stickId) { stickId = null; world.axis = null; knob.style.transform = ''; }
-      if (t.identifier === lookId) lookId = null;
-    }
-  };
-  addEventListener('touchend', end);
-  addEventListener('touchcancel', end);
-  for (const btn of document.querySelectorAll('#tbtns button')) {
-    const k = btn.dataset.k;
-    btn.addEventListener('touchstart', (e) => {
-      e.preventDefault();
-      if (k === 'KeyJ') { if (S.mode === 'day' && !S.paused) showJournal(); return; }
-      keys.add(k);
-      pressed.add(k);
-      btn.classList.add('on');
-    }, { passive: false });
-    const up = (e) => { e.preventDefault(); keys.delete(k); btn.classList.remove('on'); };
-    btn.addEventListener('touchend', up);
-    btn.addEventListener('touchcancel', up);
-  }
-}
 
 // для фона меню и для автотестов
-window.__deepback = { S, player, city, ocean, deeplings, startRun, startDay, endDay, keys, pressed, setYaw: (v) => (yaw = v) };
+window.__deepback = { S, player, city, ocean, deeplings, rain, startRun, startDay, endDay, keys, pressed, setYaw: (v) => (yaw = v) };
 
 // ============ Цикл ============
 const clock = new THREE.Clock();

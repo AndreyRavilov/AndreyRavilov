@@ -23,7 +23,6 @@ function makeWorld(city, level = 2.5) {
     ocean,
     current: 0,
     groundAt: (x, z, y) => city.groundAt(x, z, y),
-    axis: null,
     wind: null,
   };
 }

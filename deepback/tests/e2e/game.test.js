@@ -216,6 +216,10 @@ test('шторм: дождь, ветер и пометка в интерфейс
   });
   await waitFor(page, () => /Шторм/.test(document.getElementById('weather').textContent));
   assert.ok(await game(page, () => !!window.__deepback.S.wind));
+  await waitFor(page, () => window.__deepback.rain.visible);
+  // под водой дождя не видно
+  await game(page, () => { const d = window.__deepback; d.player.pos.set(150, -12, 0); d.player.vel.set(0, 0, 0); });
+  await waitFor(page, () => !window.__deepback.rain.visible);
 });
 
 test('сохранение: после перезагрузки можно продолжить с того же дня', async (t) => {

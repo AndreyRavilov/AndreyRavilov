@@ -135,10 +135,6 @@ export class Player {
     if (input.has('KeyS') || input.has('ArrowDown')) iz += 1;
     if (input.has('KeyA')) ix -= 1;
     if (input.has('KeyD')) ix += 1;
-    if (!ix && !iz && world.axis) {
-      ix = world.axis.x;
-      iz = world.axis.z;
-    }
     const fx = -Math.sin(yaw);
     const fz = -Math.cos(yaw);
     const rx = Math.cos(yaw);

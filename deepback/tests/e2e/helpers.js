@@ -3,9 +3,7 @@ import { createRequire } from 'node:module';
 import { serve } from '../../tools/serve.mjs';
 
 const require = createRequire(import.meta.url);
-const { chromium, devices } = require('playwright');
-
-export { devices };
+const { chromium } = require('playwright');
 
 export async function setup() {
   const server = await serve(0);

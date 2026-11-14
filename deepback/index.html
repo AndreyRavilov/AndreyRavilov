@@ -88,34 +88,19 @@
   .settings output { color: var(--ink); font-weight: 800; margin-left: 6px; }
   .settings input[type=range] { width: 100%; accent-color: var(--accent); }
   .settings .check { display: flex; gap: 8px; align-items: center; margin-top: 4px; }
+  .desktop-note { font-size: 13px; color: var(--muted) !important; margin-top: 14px !important; }
   .hint { font-size: 13px; color: var(--muted) !important; margin-top: 14px !important; }
-  #pausebtn { display: none; position: absolute; left: 50%; top: calc(14px + env(safe-area-inset-top, 0px)); transform: translateX(-50%); pointer-events: auto; padding: 8px 14px; background: var(--panel); color: var(--ink); border: 1px solid var(--line); }
-  body.touch #pausebtn { display: block; top: var(--below-top, 200px); left: max(14px, env(safe-area-inset-left, 0px)); transform: none; }
   button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   @media (prefers-reduced-motion: reduce) { #hud.alarm::after { animation: none; } .toast { transition: none; } }
   button.secondary { background: transparent; color: var(--ink); border: 1px solid var(--line); }
   button:disabled { opacity: .4; cursor: default; filter: none; }
   .menu-btns { display: flex; gap: 10px; flex-wrap: wrap; }
-  .touch-note { display: none; font-size: 13px; color: var(--muted) !important; margin-top: 14px !important; }
-  body.touch .touch-note { display: block; }
   .shop { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
   .up { border: 1px solid var(--line); border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
   .up-h { display: flex; justify-content: space-between; gap: 8px; }
   .up small { color: var(--muted); line-height: 1.4; flex: 1; }
   .up .pips { color: var(--accent); letter-spacing: .15em; }
   .up button { padding: 8px 12px; font-size: 13px; }
-  #touch { position: fixed; inset: 0; pointer-events: none; z-index: 5; }
-  #stick { position: absolute; left: max(24px, env(safe-area-inset-left, 0px)); bottom: calc(24px + env(safe-area-inset-bottom, 0px)); width: 130px; height: 130px; border-radius: 50%; background: rgba(8,20,26,.45); border: 1px solid var(--line); pointer-events: auto; touch-action: none; display: grid; place-items: center; }
-  #knob { width: 56px; height: 56px; border-radius: 50%; background: rgba(88,240,216,.35); border: 1px solid var(--accent); }
-  #tbtns { position: absolute; right: max(16px, env(safe-area-inset-right, 0px)); bottom: calc(18px + env(safe-area-inset-bottom, 0px)); display: grid; grid-template-columns: repeat(2, 76px); gap: 8px; pointer-events: auto; }
-  #tbtns button { height: 56px; padding: 0; font-size: 12px; letter-spacing: .04em; background: rgba(8,20,26,.55); color: var(--ink); border: 1px solid var(--line); touch-action: none; }
-  #tbtns button.sm { height: 36px; }
-  #tbtns button:last-child { grid-column: span 2; }
-  #tbtns button.on { background: rgba(88,240,216,.4); }
-  body.touch #bottom { bottom: calc(170px + env(safe-area-inset-bottom, 0px)); }
-  body.touch #compass { bottom: auto; top: var(--below-top, 200px); right: max(14px, env(safe-area-inset-right, 0px)); width: 64px; height: 64px; }
-  body.touch #crosshair { display: none; }
-  body.touch #prompt { bottom: calc(220px + env(safe-area-inset-bottom, 0px)); }
   @media (max-width: 640px) {
     #day { min-width: 0; flex: 1; }
     #ark { justify-content: flex-start; }
@@ -155,21 +140,7 @@
     <div class="panel" id="cargo"></div>
     <div class="panel hidden" id="oxy"><span>O₂</span><div class="bar"><div id="oxybar"></div></div></div>
   </div>
-  <button id="pausebtn" aria-label="Пауза">II</button>
   <div class="panel" id="compass"><span class="cap">КОВЧЕГ</span><div id="arrow"></div><span id="dist"></span></div>
-</div>
-
-<div id="touch" class="hidden">
-  <div id="stick"><div id="knob"></div></div>
-  <div id="tbtns">
-    <button data-k="KeyJ" class="sm">Журнал</button>
-    <button data-k="KeyR" class="sm">Укрыться</button>
-    <button data-k="ShiftLeft" class="sm">Бег</button>
-    <button data-k="KeyF">Гарпун</button>
-    <button data-k="KeyE">Взять</button>
-    <button data-k="KeyC">Вниз</button>
-    <button data-k="Space">Прыжок</button>
-  </div>
 </div>
 
 <div class="screen" id="menu">
@@ -190,7 +161,7 @@
       <button id="continue" class="hidden">ПРОДОЛЖИТЬ</button>
       <button id="start">НАЧАТЬ ПЕРВЫЙ ДЕНЬ</button>
     </div>
-    <p class="touch-note">На телефоне: левый джойстик — ходьба, проведи по экрану — камера.</p>
+    <p class="desktop-note">Версия 1.0 · для компьютера с клавиатурой и мышью.</p>
   </div>
 </div>
 
