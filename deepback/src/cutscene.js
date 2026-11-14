@@ -27,7 +27,7 @@ export const SHOTS = [
   },
   {
     id: 'reveal',
-    dur: 7,
+    dur: 8.5,
     cam: [[70, -2, 175], [118, 48, 118]],
     look: [[0, 4, 40], [0, 6, 0]],
     water: [3, 3],
@@ -56,7 +56,7 @@ export const SHOTS = [
   },
   {
     id: 'night',
-    dur: 7,
+    dur: 8.5,
     cam: [[32, 20, 36], [20, 19, 27]],
     look: [[0, 17, 0], [0, 18, 0]],
     water: [32, 32],
@@ -66,7 +66,7 @@ export const SHOTS = [
   },
   {
     id: 'you',
-    dur: 8,
+    dur: 8.5,
     cam: ['player-back', 'player-face'],
     look: ['player-head', 'player-head'],
     water: [2.5, 2.5],
@@ -76,7 +76,7 @@ export const SHOTS = [
   },
   {
     id: 'relic',
-    dur: 6,
+    dur: 8,
     cam: ['relic-far', 'relic-near'],
     look: ['relic', 'relic'],
     water: [2.5, 2.5],
@@ -86,7 +86,7 @@ export const SHOTS = [
   },
   {
     id: 'task',
-    dur: 7,
+    dur: 8,
     cam: [[0, 26, 40], [0, 40, 70]],
     look: [[0, 15, 10], [0, 10, -10]],
     water: [2.5, 6],

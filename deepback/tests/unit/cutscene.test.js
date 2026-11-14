@@ -60,3 +60,17 @@ test('сглаживание движения камеры', () => {
   assert.equal(ease(2), 1);
   assert.ok(ease(0.25) < 0.25 && ease(0.75) > 0.75);
 });
+
+test('озвучка: файл есть для каждой объявленной строки и фраза помещается в сцену', async () => {
+  const { VO, VO_LINES } = await import('../../src/voice.js');
+  const fs = await import('node:fs');
+  const ids = new Set(SHOTS.map((s) => s.id));
+  for (const id of VO_LINES) {
+    assert.ok(ids.has(id), `озвучка ${id} не привязана к сцене`);
+    const file = new URL(`../../audio/vo/${id}.mp3`, import.meta.url);
+    assert.ok(fs.existsSync(file), `нет файла audio/vo/${id}.mp3`);
+    assert.ok(fs.statSync(file).size > 10000, `файл ${id}.mp3 подозрительно маленький`);
+  }
+  // рассказчик говорит ~12 символов в секунду (замерено по готовым файлам) + запас на вход
+  for (const s of SHOTS) if (s.sub) assert.ok((VO[s.id] ?? s.sub.length / 12) + 0.8 <= s.dur, `сцена ${s.id}: текст не успеет прозвучать`);
+});

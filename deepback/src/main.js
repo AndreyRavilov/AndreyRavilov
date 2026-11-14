@@ -6,6 +6,7 @@ import { Player, CAPACITY } from './player.js';
 import { Audio } from './audio.js';
 import { INTRO, LORE, ENDINGS, NIGHT_LINES } from './lore.js';
 import * as CUT from './cutscene.js';
+import { Voice } from './voice.js';
 import * as NAV from './nav.js';
 import { Minimap, MAP_COLORS, LEGEND } from './minimap.js';
 import { Deepling } from './creatures.js';
@@ -77,6 +78,7 @@ const ocean = new Ocean(scene);
 const city = new City(scene);
 const player = new Player(scene);
 const audio = new Audio();
+const voice = new Voice();
 const deeplings = [new Deepling(scene, 0.5), new Deepling(scene, 3.6)];
 
 // фонтан из дыхала
@@ -313,10 +315,13 @@ addEventListener('keydown', (e) => {
 
 // ============ Настройки ============
 const SETTINGS_KEY = 'deepback-settings-v1';
-const settings = { volume: 0.7, sens: 1, invert: false };
+const settings = { volume: 0.7, voice: 1, sens: 1, invert: false };
 try { Object.assign(settings, JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}')); } catch (e) { /* без сохранения */ }
 function applySettings() {
   audio.setVolume(settings.volume);
+  voice.setVolume(settings.voice);
+  $('set-voice').value = Math.round(settings.voice * 100);
+  $('voice-out').textContent = Math.round(settings.voice * 100);
   $('set-volume').value = Math.round(settings.volume * 100);
   $('vol-out').textContent = Math.round(settings.volume * 100);
   $('set-sens').value = settings.sens;
@@ -325,6 +330,7 @@ function applySettings() {
   try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch (e) { /* ignore */ }
 }
 $('set-volume').addEventListener('input', (e) => { settings.volume = e.target.value / 100; applySettings(); });
+$('set-voice').addEventListener('input', (e) => { settings.voice = e.target.value / 100; applySettings(); });
 $('set-sens').addEventListener('input', (e) => { settings.sens = Number(e.target.value); applySettings(); });
 $('set-invert').addEventListener('change', (e) => { settings.invert = e.target.checked; applySettings(); });
 applySettings();
@@ -1048,6 +1054,7 @@ function startIntro(onDone) {
 
 function endIntro() {
   if (S.mode !== 'intro') return;
+  voice.stop();
   $('cine').classList.add('hidden');
   deeplings.forEach((d) => d.setActive(false));
   player.mesh.visible = true;
@@ -1105,6 +1112,8 @@ function onIntroShot(shot) {
   void sub.offsetWidth; // перезапуск анимации появления
   sub.textContent = shot.sub;
   sub.style.animationDuration = `${shot.dur / (S.introSpeed || 1)}s`;
+  if (S.introSpeed && S.introSpeed > 1) voice.stop();
+  else voice.play(shot.id);
   if (shot.sub) {
     sub.classList.add('show');
     intro.subs.push(shot.sub);
@@ -1318,6 +1327,7 @@ function cameraEnv(dark) {
 // ============ Меню ============
 $('intro').textContent = INTRO;
 function leaveMenu() {
+  voice.preload();
   audio.init();
   audio.resume();
   $('menu').classList.add('hidden');
@@ -1365,7 +1375,7 @@ if (saved && saved.pop > 0) {
 
 
 // для фона меню и для автотестов
-window.__deepback = { S, intro, startIntro, endIntro, player, city, ocean, deeplings, rain, navDots, startRun, startDay, endDay, keys, pressed, setYaw: (v) => (yaw = v) };
+window.__deepback = { S, voice, intro, startIntro, endIntro, player, city, ocean, deeplings, rain, navDots, startRun, startDay, endDay, keys, pressed, setYaw: (v) => (yaw = v) };
 
 // ============ Цикл ============
 const clock = new THREE.Clock();

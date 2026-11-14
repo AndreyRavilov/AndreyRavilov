@@ -306,6 +306,31 @@ test('вступительный ролик: идёт до конца, отве�
   assert.deepEqual(page.errors, []);
 });
 
+test('озвучка: рассказчик говорит в ролике, громкость голоса настраивается', async (t) => {
+  const page = await openGame(env); t.after(() => page.context().close().catch(() => {}));
+  await page.click('#start');
+  await waitFor(page, () => window.__deepback.S.mode === 'intro');
+  await waitFor(page, () => {
+    const a = window.__deepback.voice.current;
+    return a && /audio\/vo\/deep\.mp3$/.test(a.src) && a.readyState >= 2;
+  });
+  const ok = await game(page, () => {
+    const a = window.__deepback.voice.current;
+    return { paused: a.paused, duration: a.duration };
+  });
+  assert.equal(ok.paused, false, 'фраза должна играть');
+  assert.ok(ok.duration > 4 && ok.duration < 6, `длительность ${ok.duration}`);
+  // пропуск ролика глушит голос
+  await page.click('#skip');
+  await waitFor(page, () => window.__deepback.S.mode === 'day' && !window.__deepback.voice.current);
+  // громкость голоса в паузе
+  await page.keyboard.press('KeyP');
+  await waitFor(page, () => window.__deepback.S.paused);
+  await page.fill('#set-voice', '40');
+  await page.dispatchEvent('#set-voice', 'input');
+  assert.equal(await game(page, () => window.__deepback.voice.volume), 0.4);
+});
+
 test('ролик можно пропустить пробелом и пересмотреть из меню', async (t) => {
   const page = await openGame(env); t.after(() => page.context().close().catch(() => {}));
   await page.click('#prologue-btn');
