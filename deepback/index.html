@@ -86,6 +86,8 @@
   #cine-sub { position: absolute; left: 50%; bottom: calc(11vh + 26px); transform: translateX(-50%); width: min(900px, 86vw); margin: 0; text-align: center; font-size: clamp(18px, 2.1vw, 26px); line-height: 1.45; color: #f2fbfa; text-shadow: 0 2px 12px rgba(0,0,0,.9), 0 0 2px #000; opacity: 0; }
   #cine-sub.show { animation: subIn 7s ease forwards; }
   @keyframes subIn { 0% { opacity: 0; transform: translate(-50%, 8px); } 8% { opacity: 1; transform: translate(-50%, 0); } 88% { opacity: 1; } 100% { opacity: .0; } }
+  .cine-label { position: absolute; transform: translate(-50%, -100%); padding: 6px 12px; border-radius: 8px; background: rgba(6, 16, 22, .72); border: 1px solid var(--accent); color: #eafffb; font-size: clamp(14px, 1.4vw, 18px); font-weight: 600; white-space: nowrap; opacity: 0; transition: opacity .25s; }
+  .cine-label::after { content: ''; position: absolute; left: 50%; bottom: -9px; transform: translateX(-50%); border: 5px solid transparent; border-top-color: var(--accent); }
   #cine-title { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; opacity: 0; transition: opacity 1.2s; }
   #cine-title h1 { font-family: 'Cormorant Garamond', serif; font-size: clamp(64px, 12vw, 150px); letter-spacing: .08em; margin: 0; color: #f2fbfa; text-shadow: 0 0 60px rgba(88,240,216,.35), 0 4px 30px rgba(0,0,0,.8); }
   #cine-title p { margin: 8px 0 0; letter-spacing: .4em; text-transform: uppercase; font-size: 14px; color: var(--accent); }
@@ -179,6 +181,7 @@
 <div id="cine" class="hidden">
   <div class="bar top"></div>
   <div class="bar bottom"></div>
+  <div id="cine-labels"></div>
   <p id="cine-sub"></p>
   <div id="cine-title"><h1>DEEPBACK</h1><p>Шлюз открывается.</p></div>
   <button id="skip">Пропустить <kbd>Space</kbd></button>

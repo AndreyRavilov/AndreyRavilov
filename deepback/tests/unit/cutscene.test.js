@@ -73,5 +73,16 @@ test('озвучка: файл есть для каждой объявленно
     assert.ok(fs.statSync(file).size > 10000, `файл ${id}.mp3 подозрительно маленький`);
   }
   // рассказчик говорит ~12 символов в секунду (замерено по готовым файлам) + запас на вход
-  for (const s of SHOTS) if (s.sub) assert.ok((VO[s.id] ?? s.sub.length / 12) + 0.8 <= s.dur, `сцена ${s.id}: текст не успеет прозвучать`);
+  // фраза может продолжаться в следующих сценах без своей озвучки (так «вернись к шлюзу» звучит на кадре шлюза)
+  const covered = new Set();
+  SHOTS.forEach((s, i) => {
+    if (!VO[s.id]) return;
+    let avail = s.dur;
+    for (let j = i + 1; j < SHOTS.length && !VO[SHOTS[j].id] && !SHOTS[j].title; j++) {
+      avail += SHOTS[j].dur;
+      covered.add(SHOTS[j].id);
+    }
+    assert.ok(VO[s.id] + 0.8 <= avail, `сцена ${s.id}: фраза ${VO[s.id]} с не помещается в ${avail} с`);
+  });
+  for (const s of SHOTS) if (s.sub && !VO[s.id] && !covered.has(s.id)) assert.ok(s.sub.length / 12 + 0.8 <= s.dur, `сцена ${s.id}: текст не успеет прозвучать`);
 });

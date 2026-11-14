@@ -439,3 +439,30 @@ test('высокое качество графики: свечение, сгла
   await page.waitForTimeout(500);
   assert.deepEqual(page.errors, []);
 });
+
+test('ролик: показывает, что собирать и куда нести, камера не упирается в дома', async (t) => {
+  const page = await openGame(env); t.after(() => page.context().close().catch(() => {}));
+  await page.click('#start');
+  await waitFor(page, () => window.__deepback.S.mode === 'intro');
+  const starts = await game(page, async () => {
+    const { SHOTS } = await import('./src/cutscene.js');
+    let acc = 0;
+    const out = {};
+    for (const s of SHOTS) { out[s.id] = acc; acc += s.dur; }
+    return out;
+  });
+  for (const [id, expect] of [['task', /Рыба.*Ворвань|Ворвань.*Рыба/s], ['hatch', /Шлюз Ковчега/]]) {
+    await game(page, (t0) => { const d = window.__deepback; d.S.introSpeed = 0.0001; d.intro.t = t0 + 1.5; }, starts[id]);
+    await waitFor(page, (id) => window.__deepback.intro.shot >= 0 && document.getElementById('cine-sub').textContent.length > 0 && window.__deepback.intro.cams && Object.keys(window.__deepback.intro.cams).some((k) => k.startsWith(id === 'task' ? 'show' : 'hatch')), id);
+    assert.match(await page.textContent('#cine-labels'), expect);
+    // из выбранных точек камеры цель видна: ни одна постройка не стоит на линии взгляда
+    const views = await game(page, (id) => {
+      const d = window.__deepback;
+      const target = d.introPoint(id === 'task' ? 'show' : 'hatch');
+      return Object.entries(d.intro.cams).map(([k, c]) => [k, d.lineClear(c, target)]);
+    }, id);
+    assert.ok(views.length >= 2);
+    for (const [k, clear] of views) assert.ok(clear, `ракурс ${k}: цель закрыта постройкой`);
+  }
+  assert.deepEqual(page.errors, []);
+});

@@ -1097,6 +1097,8 @@ function startIntro(onDone) {
   const q = makeQuest(drng, S.alive, 1);
   city.generate(S.runSeed + 1013, 1, S.lore, LORE.length, { keepsake: q?.kind === 'keepsake' });
   navGrid = NAV.buildGrid((x, z) => backU(x, z) >= 0.97 || city.overlaps(x, z, 0.8));
+  intro.cams = null;
+  setupShowcase();
   S.weather = 'clear';
   S.wind = null;
   world.wind = null;
@@ -1121,6 +1123,8 @@ function startIntro(onDone) {
 function endIntro() {
   if (S.mode !== 'intro') return;
   voice.stop();
+  player.walkMul = 1;
+  $('cine-labels').innerHTML = '';
   $('cine').classList.add('hidden');
   deeplings.forEach((d) => d.setActive(false));
   player.mesh.visible = true;
@@ -1138,18 +1142,149 @@ function introRelic() {
 }
 
 // Точка из сценария: готовые координаты или «ключ» (игрок, реликвия)
+// ---- Камера ролика не упирается в дома ----
+// Видно ли цель из точки a: отрезок не проходит сквозь постройки и спину Матери
+function lineClear(a, b) {
+  for (let i = 1; i < 28; i++) {
+    const t = i / 28;
+    const x = a[0] + (b[0] - a[0]) * t;
+    const y = a[1] + (b[1] - a[1]) * t;
+    const z = a[2] + (b[2] - a[2]) * t;
+    if (t < 0.97 && y < backHeight(x, z) + 0.25) return false;
+    for (const c of city.colliders) {
+      if (c.type === 'box') {
+        if (x > c.minX - 0.4 && x < c.maxX + 0.4 && z > c.minZ - 0.4 && z < c.maxZ + 0.4 && y < c.top + 0.6) return false;
+      } else if (Math.hypot(x - c.x, z - c.z) < c.r + 0.4 && y < c.topAt(x, z) + 0.6) return false;
+    }
+  }
+  return true;
+}
+// Рядом с камерой не должно быть стен, столбов и верёвок, которые закроют край кадра
+function cameraRoomy(c, r = 2.6) {
+  for (const k of city.colliders) {
+    if (k.type !== 'box') continue;
+    const dx = Math.max(k.minX - c[0], 0, c[0] - k.maxX);
+    const dz = Math.max(k.minZ - c[2], 0, c[2] - k.maxZ);
+    if (Math.hypot(dx, dz) < r && k.top > c[1] - 2) return false;
+  }
+  return true;
+}
+// Ищем ракурс вокруг цели: сначала в желаемую сторону, потом всё дальше от неё и выше.
+// extra — дополнительные точки, которые тоже должны быть видны (например, оба предмета).
+function clearShot(target, dist, height, pref, extra = []) {
+  const T = [target.x, target.y, target.z];
+  for (const h of [height, height * 1.6 + 1, height * 2.5 + 2]) {
+    for (let k = 0; k < 16; k++) {
+      const a = pref + (k % 2 ? 1 : -1) * Math.ceil(k / 2) * (Math.PI / 8);
+      const c = [target.x + Math.sin(a) * dist, target.y + h, target.z + Math.cos(a) * dist];
+      if (c[1] < backHeight(c[0], c[2]) + 0.6) continue;
+      if (!cameraRoomy(c, Math.min(2.6, dist * 0.45))) continue;
+      if (lineClear(c, T) && extra.every((e) => lineClear(c, e))) return c;
+    }
+  }
+  return [target.x + Math.sin(pref) * dist, target.y + height * 3 + 6, target.z + Math.cos(pref) * dist];
+}
+const angleOf = (c, t) => Math.atan2(c[0] - t.x, c[2] - t.z);
+// пара точек «издалека → ближе», обе с чистым видом и с одной стороны
+function shotPair(target, far, farH, near, nearH, pref, extra = []) {
+  const a = clearShot(target, far, farH, pref, extra);
+  const b = clearShot(target, near, nearH, angleOf(a, target), extra);
+  return [a, b];
+}
+
+// Витрина для сцены «что собирать»: рыба и бочка на открытом месте рядом со шлюзом
+function setupShowcase() {
+  for (let r = 18; r < 50; r += 3) {
+    for (let k = 0; k < 16; k++) {
+      const a = (k / 16) * Math.PI * 2;
+      const x = Math.sin(a) * r * 0.6;
+      const z = HATCH.z + Math.cos(a) * r;
+      if (backU(x, z) > 0.55 || city.overlaps(x, z, 4.5)) continue;
+      if (city.pickups.some((p) => Math.hypot(p.x - x, p.z - z) < 4)) continue;
+      const before = city.pickups.length;
+      city.addPickup('food', x - 1.4, z);
+      city.addPickup('fuel', x + 1.4, z);
+      intro.showFood = city.pickups[before];
+      intro.showFuel = city.pickups[before + 1];
+      intro.show = { x, y: city.groundAt(x, z) + 0.9, z };
+      return;
+    }
+  }
+  intro.show = { x: HATCH.x, y: HATCH.y + 1, z: HATCH.z + 6 };
+}
+
+function planShot(shot) {
+  const cams = {};
+  if (shot.id === 'you') {
+    const g = city.groundAt(0, 14.5);
+    const [far, near] = shotPair({ x: 0, y: g + 1.5, z: 14.5 }, 9, 2.2, 3.4, 0.35, 0.5);
+    cams['player-back'] = far;
+    cams['player-face'] = near;
+  } else if (shot.id === 'relic') {
+    const r = introRelic();
+    const [far, near] = shotPair({ x: r.x, y: r.y, z: r.z }, 14, 6, 4.4, 1.4, Math.atan2(r.ox, r.oz));
+    cams['relic-far'] = far;
+    cams['relic-near'] = near;
+  } else if (shot.id === 'task') {
+    const s = intro.show;
+    // предметы стоят вдоль оси X — снимаем поперёк, чтобы оба были видны рядом
+    const t = { x: s.x, y: s.y, z: s.z };
+    const items = [intro.showFood, intro.showFuel].filter(Boolean).map((p) => [p.x, p.y, p.z]);
+    let [far, near] = shotPair(t, 10, 5, 5.2, 1.3, 0, items);
+    if (Math.abs(Math.sin(angleOf(near, t))) > 0.6) [far, near] = shotPair(t, 10, 5, 5.2, 1.3, Math.PI, items);
+    cams['show-far'] = far;
+    cams['show-near'] = near;
+  } else if (shot.id === 'hatch') {
+    const t = { x: HATCH.x, y: HATCH.y + 1.2, z: HATCH.z };
+    const [far, near] = shotPair(t, 18, 8, 7.5, 2.4, 0.25);
+    cams['hatch-far'] = far;
+    cams['hatch-near'] = near;
+  }
+  intro.cams = cams;
+}
+
+// Точка из сценария: готовые координаты или «ключ» (игрок, реликвия, витрина, шлюз)
 function introPoint(spec) {
   if (Array.isArray(spec)) return spec;
+  if (intro.cams && intro.cams[spec]) return intro.cams[spec];
   const p = player.pos;
   const r = introRelic();
   switch (spec) {
-    case 'player-back': return [p.x + 7, p.y + 3.5, p.z + 10];
-    case 'player-face': return [p.x + 1.1, p.y + 1.9, p.z + 3.1];
     case 'player-head': return [p.x, p.y + 1.55, p.z];
-    case 'relic-far': return [r.x + r.ox * 14, r.y + 6, r.z + r.oz * 14];
-    case 'relic-near': return [r.x + r.ox * 4 + r.oz * 1.5, r.y + 1.4, r.z + r.oz * 4 - r.ox * 1.5];
     case 'relic': return [r.x, r.y, r.z];
+    case 'show': return intro.show ? [intro.show.x, intro.show.y, intro.show.z] : [0, 16, 20];
+    case 'hatch': return [HATCH.x, HATCH.y + 1.2, HATCH.z];
     default: return [0, 0, 0];
+  }
+}
+
+// Подписи поверх кадра: что за предмет или место сейчас показывают
+const LABELS = {
+  food: { text: '🐟 Рыба — еда для жителей', at: () => intro.showFood && [intro.showFood.x, intro.showFood.y + 2.1, intro.showFood.z] },
+  fuel: { text: '🛢️ Ворвань — топливо на ночь', at: () => intro.showFuel && [intro.showFuel.x, intro.showFuel.y + 1.1, intro.showFuel.z] },
+  hatch: { text: 'Шлюз Ковчега — сюда нести груз', at: () => [HATCH.x, HATCH.y + 2.6, HATCH.z] },
+};
+const labelV = new THREE.Vector3();
+function showLabels(shot) {
+  const box = $('cine-labels');
+  box.innerHTML = '';
+  for (const key of shot.labels || []) {
+    const el = document.createElement('div');
+    el.className = 'cine-label';
+    el.dataset.key = key;
+    el.textContent = LABELS[key].text;
+    box.appendChild(el);
+  }
+}
+function updateLabels(k) {
+  for (const el of $('cine-labels').children) {
+    const p = LABELS[el.dataset.key].at();
+    if (!p) continue;
+    labelV.set(p[0], p[1], p[2]).project(camera);
+    const vis = labelV.z < 1 && Math.abs(labelV.x) < 1.1 && Math.abs(labelV.y) < 1.1;
+    el.style.opacity = vis ? Math.min(1, Math.max(0, (k - 0.12) * 5)) : 0;
+    el.style.left = `${((labelV.x + 1) / 2) * window.innerWidth}px`;
+    el.style.top = `${((1 - labelV.y) / 2) * window.innerHeight}px`;
   }
 }
 
@@ -1179,7 +1314,9 @@ function onIntroShot(shot) {
   sub.textContent = shot.sub;
   sub.style.animationDuration = `${shot.dur / (S.introSpeed || 1)}s`;
   if (S.introSpeed && S.introSpeed > 1) voice.stop();
-  else voice.play(shot.id);
+  else if (voice.has(shot.id)) voice.play(shot.id); // сцена без своей фразы не обрывает предыдущую
+  planShot(shot);
+  showLabels(shot);
   if (shot.sub) {
     sub.classList.add('show');
     intro.subs.push(shot.sub);
@@ -1190,9 +1327,10 @@ function onIntroShot(shot) {
     player.facing = Math.PI;
     player.mesh.rotation.y = Math.PI;
     player.mesh.visible = true;
-    intro.walk = 2.6;
+    player.walkMul = 0.3; // в ролике ныряльщик выходит из шлюза неспешно
+    intro.walk = 2.4;
   }
-  if (shot.id === 'task') S.navTimer = 0;
+  if (shot.id === 'hatch') S.navTimer = 0;
   if (shot.id !== 'night') deeplings[0].setActive(false);
 }
 
@@ -1241,7 +1379,8 @@ function updateIntro(dt) {
     introFake.pos.set(CUT.lerp(-26, 30, st.k), 21 + Math.sin(st.k * 6) * 1.5, CUT.lerp(18, 14, st.k));
     deeplings[0].update(sdt, introFake, ocean, true, 2.5);
   }
-  if (s.id === 'task') updateNavigator(sdt);
+  updateLabels(st.k);
+  if (s.id === 'hatch') updateNavigator(sdt);
   else navDots.count = 0;
   cameraEnv(s.id === 'night' ? 1 : p);
 }
@@ -1478,7 +1617,7 @@ if (saved && saved.pop > 0) {
 
 
 // для фона меню и для автотестов
-window.__deepback = { S, sky, envScene, whale, ambient, scene, post, voice, intro, startIntro, endIntro, player, city, ocean, deeplings, rain, navDots, startRun, startDay, endDay, keys, pressed, setYaw: (v) => (yaw = v) };
+window.__deepback = { lineClear: (...a) => lineClear(...a), introPoint: (s) => introPoint(s), S, sky, envScene, whale, ambient, scene, post, voice, intro, startIntro, endIntro, player, city, ocean, deeplings, rain, navDots, startRun, startDay, endDay, keys, pressed, setYaw: (v) => (yaw = v) };
 
 // ============ Цикл ============
 const clock = new THREE.Clock();
