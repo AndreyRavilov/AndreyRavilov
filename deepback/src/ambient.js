@@ -259,10 +259,11 @@ export class Ambient {
     if (ctx.shore && underK < 0.5) {
       for (let i = 0; i < 3; i++) {
         const s = ctx.shore();
-        if (s) this.spray.spawn(s.x, s.y, s.z, (Math.random() - 0.5) * 1.2, 1.5 + Math.random() * 1.5, (Math.random() - 0.5) * 1.2, 1.2, 0.35 + Math.random() * 0.4);
+        if (s) this.spray.spawn(s.x, s.y, s.z, (Math.random() - 0.5) * 1.2, 1.5 + Math.random() * 1.5, (Math.random() - 0.5) * 1.2, 1.0, 0.25 + Math.random() * 0.3);
       }
     }
-    this.spray.update(dt, (k) => ({ alpha: (1 - k) * 0.5, grow: 0.8 }), 0.5);
+    const sprayK = Math.max(0, 1 - p * 1.3);
+    this.spray.update(dt, (k) => ({ alpha: (1 - k) * 0.45 * sprayK, grow: 0.8 }), 0.5);
 
     // лучи света: только днём и под водой, плывут вместе с камерой
     const rays = underK > 0.3 && p < 0.8;

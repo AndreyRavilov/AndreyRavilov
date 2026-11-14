@@ -51,9 +51,9 @@ export function createSkyMaterial(cloudTex) {
         vec3 m = normalize(vec3(-s.x, abs(s.y) * 0.8 + 0.25, -s.z));
         float md = max(dot(d, m), 0.0);
         float night = 1.0 - smoothstep(-0.15, 0.05, s.y);
-        float disc = smoothstep(0.99955, 0.9998, md);
+        float disc = smoothstep(0.99975, 0.9999, md);
         float crater = 0.85 + 0.15 * sin(d.x * 900.0) * sin(d.z * 800.0);
-        c += vec3(0.85, 0.9, 1.0) * (disc * 1.6 * crater + pow(md, 60.0) * 0.12) * night;
+        c += vec3(0.85, 0.9, 1.0) * (disc * 0.8 * crater + pow(md, 120.0) * 0.06) * night;
         // солнечный диск поверх облаков (сквозь тонкие — виден)
         c += uSunColor * smoothstep(0.9993 - 0.0004 * uSunSize, 0.9998, sd) * 6.0 * above;
         gl_FragColor = vec4(c, 1.0);

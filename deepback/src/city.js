@@ -129,10 +129,22 @@ export class City {
     this.beaconLight.position.copy(beacon.position);
     g.add(this.beaconLight);
     // вращающийся луч маяка — виден в сумерках и ночью
-    const beamGeo = new THREE.CylinderGeometry(0.25, 7, 70, 24, 1, true);
-    beamGeo.translate(0, 35, 0);
-    beamGeo.rotateZ(-Math.PI / 2 + 0.08);
-    this.beamMat = new THREE.MeshBasicMaterial({ color: 0xffd9a0, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: true });
+    const beamGeo = new THREE.CylinderGeometry(0.2, 3.2, 60, 24, 1, true);
+    beamGeo.translate(0, 30, 0);
+    beamGeo.rotateZ(-Math.PI / 2 + 0.06);
+    // свет гаснет к концу луча и мягко — к его краям
+    this.beamMat = new THREE.ShaderMaterial({
+      uniforms: { uColor: { value: new THREE.Color(0xffd9a0) }, opacity: { value: 0 } },
+      vertexShader: `varying float vV; varying vec3 vN; varying vec3 vView;
+        void main(){ vV = uv.y; vN = normalize(normalMatrix * normal); vec4 mv = modelViewMatrix * vec4(position,1.0); vView = normalize(-mv.xyz); gl_Position = projectionMatrix * mv; }`,
+      fragmentShader: `uniform vec3 uColor; uniform float opacity; varying float vV; varying vec3 vN; varying vec3 vView;
+        void main(){ float edge = pow(abs(dot(normalize(vN), normalize(vView))), 1.5); float fade = pow(1.0 - vV, 1.6);
+        gl_FragColor = vec4(uColor * edge * fade * opacity, 1.0); }`,
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    });
     this.beam = new THREE.Group();
     this.beam.position.copy(beacon.position);
     this.beam.add(new THREE.Mesh(beamGeo, this.beamMat));
@@ -500,14 +512,14 @@ export class City {
     }
     // мягкое свечение вокруг припаса (в браузере — с текстурой пятна)
     const glowColor = { food: 0xcff6ff, fuel: 0xffb070, scrap: 0xd0d6ff, relic: 0x80ffff, keepsake: 0xff9fc8 }[type];
-    const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: GLOW.tex, color: glowColor, transparent: true, opacity: GLOW.tex ? 0.75 : 0.25, depthWrite: false, blending: THREE.AdditiveBlending }));
+    const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: GLOW.tex, color: glowColor, transparent: true, opacity: GLOW.tex ? 0.75 : 0.25, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }));
     halo.scale.setScalar(type === 'relic' || type === 'keepsake' ? 4 : 2.6);
     g.add(halo);
     // реликвия и вещь жителя видны издалека: столб света в небо
     if (type === 'relic' || type === 'keepsake') {
       const col = new THREE.Mesh(
         new THREE.CylinderGeometry(0.35, 0.9, 60, 12, 1, true).translate(0, 30, 0),
-        new THREE.MeshBasicMaterial({ color: glowColor, transparent: true, opacity: 0.16, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide })
+        new THREE.MeshBasicMaterial({ color: glowColor, transparent: true, opacity: 0.16, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false })
       );
       col.position.y = -0.9;
       g.add(col);

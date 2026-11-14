@@ -1348,7 +1348,7 @@ function updateAmbient(dt, p) {
     shore: shorePoint,
   });
   city.beam.rotation.y += dt * 0.5;
-  city.beamMat.opacity = Math.max(0, Math.min(1, (p - 0.45) / 0.3)) * 0.22 * (S.underK > 0.5 ? 0 : 1);
+  city.beamMat.uniforms.opacity.value = Math.max(0, Math.min(1, (p - 0.45) / 0.3)) * 0.5 * (S.underK > 0.5 ? 0 : 1);
 }
 
 // Небо, солнце, туман и «подводность» вокруг текущей камеры
