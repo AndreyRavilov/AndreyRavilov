@@ -16,8 +16,8 @@ export async function setup() {
     browser: await launch(),
     opened: 0,
     // программный рендер копит память: каждые 8 игр браузер перезапускается
-    async fresh() {
-      if (++env.opened % 8 === 0) {
+    async fresh(force = false) {
+      if (++env.opened % 8 === 0 || force) {
         await env.browser.close().catch(() => {});
         env.browser = await launch();
       }
@@ -33,8 +33,8 @@ export async function setup() {
 
 // Открыть игру на чистом профиле; ошибки страницы собираются в page.errors
 export async function openGame(env, contextOptions = { viewport: { width: 1280, height: 720 } }) {
-  const { quality, ...ctxOptions } = contextOptions;
-  const browser = env.fresh ? await env.fresh() : env.browser;
+  const { quality, freshBrowser, ...ctxOptions } = contextOptions;
+  const browser = env.fresh ? await env.fresh(freshBrowser) : env.browser;
   const context = await browser.newContext(ctxOptions);
   const page = await context.newPage();
   page.setDefaultTimeout(60000);
