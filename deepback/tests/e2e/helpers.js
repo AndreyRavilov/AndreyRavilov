@@ -34,7 +34,7 @@ export async function openGame(env, contextOptions = { viewport: { width: 1280, 
     if (m.type() === 'error') page.errors.push(m.text());
   });
   // в тестах — низкое качество графики: программный рендер в CI медленный
-  await page.goto(quality === 'high' ? env.url : `${env.url}?quality=low`);
+  await page.goto(`${env.url}?quality=${quality || 'low'}`);
   await page.waitForFunction(() => window.__deepback && document.querySelector('canvas'));
   return page;
 }

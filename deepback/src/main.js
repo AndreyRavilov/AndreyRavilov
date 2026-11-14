@@ -104,7 +104,7 @@ const blowGeo = new THREE.BufferGeometry();
 const blowPos = new Float32Array(BLOW_N * 3);
 const blowVel = new Float32Array(BLOW_N * 3);
 blowGeo.setAttribute('position', new THREE.BufferAttribute(blowPos, 3));
-const blowMat = new THREE.PointsMaterial({ color: 0xe8f6ff, size: 0.55, transparent: true, opacity: 0.85, depthWrite: false });
+const blowMat = new THREE.PointsMaterial({ color: 0xe8f6ff, size: 1.6, map: TEX.glowDot(), transparent: true, opacity: 0.85, depthWrite: false, alphaTest: 0.01 });
 const blowPts = new THREE.Points(blowGeo, blowMat);
 blowPts.frustumCulled = false;
 blowPts.visible = false;
@@ -346,9 +346,30 @@ addEventListener('keydown', (e) => {
   }
 });
 
+// ============ Автонастройка графики ============
+let autoLevel = 'high';
+let qualityChosen = false; // игрок сам выбрал качество в меню — это важнее параметра в адресе
+const fpsMeter = { frames: 0, time: 0, low: 0 };
+function autoQuality(dt) {
+  if ((URL_QUALITY && !qualityChosen) || settings.quality !== 'auto' || S.mode === 'menu' || S.paused) return;
+  fpsMeter.frames++;
+  fpsMeter.time += dt;
+  if (fpsMeter.time < 2) return;
+  const fps = fpsMeter.frames / fpsMeter.time;
+  fpsMeter.frames = 0;
+  fpsMeter.time = 0;
+  fpsMeter.low = fps < 25 ? fpsMeter.low + 1 : 0;
+  if (fpsMeter.low >= 3 && autoLevel !== 'low') {
+    autoLevel = autoLevel === 'high' ? 'medium' : 'low';
+    fpsMeter.low = 0;
+    post.setQuality(autoLevel, sun);
+    toast(`Графика снижена до «${autoLevel === 'medium' ? 'среднего' : 'низкого'}» качества для плавности. Изменить — в паузе.`);
+  }
+}
+
 // ============ Настройки ============
 const SETTINGS_KEY = 'deepback-settings-v1';
-const settings = { volume: 0.7, voice: 1, music: 0.5, sens: 1, invert: false, quality: 'high' };
+const settings = { volume: 0.7, voice: 1, music: 0.5, sens: 1, invert: false, quality: 'auto' };
 try { Object.assign(settings, JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}')); } catch (e) { /* без сохранения */ }
 function applySettings() {
   audio.setVolume(settings.volume);
@@ -363,7 +384,8 @@ function applySettings() {
   $('set-sens').value = settings.sens;
   $('sens-out').textContent = Number(settings.sens).toFixed(1);
   $('set-invert').checked = settings.invert;
-  const q = URL_QUALITY || settings.quality;
+  // «Авто»: начинаем с высокого и снижаем, если кадров мало (см. autoQuality)
+  const q = (!qualityChosen && URL_QUALITY) || (settings.quality === 'auto' ? autoLevel : settings.quality);
   $('set-quality').value = settings.quality;
   if (post.level !== q) post.setQuality(q, sun);
   try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch (e) { /* ignore */ }
@@ -372,7 +394,7 @@ $('set-volume').addEventListener('input', (e) => { settings.volume = e.target.va
 $('set-music').addEventListener('input', (e) => { settings.music = e.target.value / 100; applySettings(); });
 $('set-voice').addEventListener('input', (e) => { settings.voice = e.target.value / 100; applySettings(); });
 $('set-sens').addEventListener('input', (e) => { settings.sens = Number(e.target.value); applySettings(); });
-$('set-quality').addEventListener('change', (e) => { settings.quality = e.target.value; applySettings(); });
+$('set-quality').addEventListener('change', (e) => { settings.quality = e.target.value; qualityChosen = true; applySettings(); });
 $('set-invert').addEventListener('change', (e) => { settings.invert = e.target.checked; applySettings(); });
 applySettings();
 
@@ -1463,7 +1485,8 @@ const clock = new THREE.Clock();
 city.generate(S.runSeed, 1, 0, LORE.length);
 player.reset(new THREE.Vector3(HATCH.x, city.groundAt(HATCH.x, HATCH.z + 3) + 0.1, HATCH.z + 3));
 function frame() {
-  const dt = Math.min(0.05, clock.getDelta());
+  const rawDt = clock.getDelta();
+  const dt = Math.min(0.05, rawDt);
   S.time += dt;
   if (S.mode === 'menu') {
     yaw += dt * 0.05;
@@ -1490,6 +1513,7 @@ function frame() {
     camera.lookAt(...S.debugCam[1]);
   }
   pressed.clear();
+  autoQuality(rawDt);
   post.render(dt, { under: S.underK || 0, time: S.time });
   requestAnimationFrame(frame);
 }

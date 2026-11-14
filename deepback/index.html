@@ -93,6 +93,10 @@
   #skip { position: absolute; right: 24px; bottom: calc(11vh + 20px); pointer-events: auto; background: rgba(0,0,0,.45); color: var(--muted); border: 1px solid var(--line); font-size: 13px; padding: 8px 14px; }
   #skip kbd { font-family: inherit; border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; margin-left: 6px; }
   @media (prefers-reduced-motion: reduce) { #cine-sub.show { animation: none; opacity: 1; } }
+  /* главное меню: карточка слева, за ней — живая панорама города */
+  #menu { place-items: center start; background: linear-gradient(90deg, rgba(3,10,14,.82) 0%, rgba(3,10,14,.55) 38%, rgba(3,10,14,0) 70%); padding-left: max(5vw, 16px); }
+  #menu .card { background: rgba(6, 16, 22, 0.55); backdrop-filter: blur(6px); width: min(560px, 100%); }
+  @media (max-width: 760px) { #menu { place-items: center; background: rgba(3,10,14,.7); } }
   .card[data-step]::before { content: attr(data-step); display: block; font-size: 11px; letter-spacing: .2em; color: var(--muted); margin-bottom: 8px; }
   .card.wide { width: min(820px, 100%); }
   .card h1 { font-family: 'Cormorant Garamond', serif; font-size: clamp(44px, 11vw, 88px); letter-spacing: .06em; margin: 0; line-height: .95; color: #f2fbfa; text-shadow: 0 0 40px rgba(88,240,216,.25); }
@@ -228,6 +232,7 @@
       <label class="check"><input id="set-invert" type="checkbox" /> Инвертировать вертикаль</label>
       <label for="set-quality">Графика</label>
       <select id="set-quality">
+        <option value="auto">Авто: высокое, снижается само, если кадров мало</option>
         <option value="high">Высокое качество: свечение, сглаживание, мягкие тени</option>
         <option value="medium">Среднее: без сглаживания, тени попроще</option>
         <option value="low">Низкое: для слабых компьютеров</option>
