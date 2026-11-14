@@ -17,6 +17,9 @@ import * as ECO from './economy.js';
 import * as TEX from './textures.js';
 import { createSkyMaterial, sunDirection, Post, addCaustics, CAUSTICS } from './graphics.js';
 import { Ambient } from './ambient.js';
+import { ArkInterior, ARK_R } from './ark.js';
+import * as ARMS from './armory.js';
+import { NIGHT_ROLES, nightLine } from './residents.js';
 
 // ============ Рендер и сцена ============
 const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: false, powerPreference: 'high-performance' });
@@ -206,6 +209,8 @@ const S = {
   scrap: 0,
   up: {},
   alive: [],
+  arms: ARMS.emptyArms(),
+  savedToday: false,
   quest: null,
   weather: 'clear',
   navMode: 0,
@@ -247,7 +252,7 @@ const canvas = renderer.domElement;
 canvas.addEventListener('mousedown', (e) => {
   dragging = true;
   audio.resume();
-  if (S.mode === 'day' || S.mode === 'closing') lockPointer();
+  if (S.mode === 'day' || S.mode === 'closing' || S.mode === 'ark') lockPointer();
 });
 addEventListener('mouseup', () => (dragging = false));
 addEventListener('mousemove', (e) => {
@@ -273,7 +278,7 @@ function lockPointer() {
 let hadLock = false;
 document.addEventListener('pointerlockchange', () => {
   if (document.pointerLockElement === canvas) hadLock = true;
-  else if (hadLock && (S.mode === 'day' || S.mode === 'closing') && !S.paused) setPause(true);
+  else if (hadLock && (S.mode === 'day' || S.mode === 'closing' || S.mode === 'ark') && !S.paused) setPause(true);
 });
 
 // ============ UI ============
@@ -341,7 +346,7 @@ $('to-menu').addEventListener('click', () => {
   location.reload(); // сохранение уже записано утром — меню предложит продолжить
 });
 addEventListener('keydown', (e) => {
-  if ((e.code === 'Escape' || e.code === 'KeyP') && (S.mode === 'day' || S.mode === 'closing') && $('modal').classList.contains('hidden')) {
+  if ((e.code === 'Escape' || e.code === 'KeyP') && (S.mode === 'day' || S.mode === 'closing' || S.mode === 'ark') && $('modal').classList.contains('hidden')) {
     setPause(e.code === 'Escape' ? true : !S.paused);
   }
 });
@@ -412,6 +417,10 @@ function updateHud() {
   $('scrap').textContent = S.scrap;
   $('need').textContent = `На ночь нужно: 🐟 ${needFood()} · 🛢️ ${needFuel()}`;
   const w = player.weight;
+  const A = S.arms;
+  $('weapons').innerHTML = `<span class="lbl">F</span> ${A.spear ? 'острога' : 'гарпун'}` +
+    (A.bombs ? ` · <span class="lbl">G</span> соль ×${A.bombs}` : '') +
+    (A.flare ? ` · <span class="lbl">Q</span> ракетница ${A.flareReady ? '✓' : '—'}` : '');
   $('cargo').innerHTML = `<span class="lbl">Груз ${w}/${player.capacity}</span> ` + (player.carried.map((t) => `<span class="it ${t}">${ITEM[t].icon}</span>`).join('') || '<span class="empty">пусто</span>');
   $('oxy').classList.toggle('hidden', player.oxygen > 0.995 && !player.headUnder);
   $('oxybar').style.width = Math.max(0, player.oxygen) * 100 + '%';
@@ -442,6 +451,7 @@ function startRun(withIntro = false) {
   S.scrap = 0;
   S.up = {};
   S.alive = RESIDENTS.map((r) => r.id);
+  S.arms = ARMS.emptyArms();
   S.runSeed = Math.floor(Math.random() * 1e9);
   if (withIntro) startIntro(startDay);
   else startDay();
@@ -449,7 +459,7 @@ function startRun(withIntro = false) {
 
 // ============ Сохранение ============
 const SAVE_KEY = 'deepback-save-v1';
-const SAVE_FIELDS = ['cycle', 'pop', 'food', 'fuel', 'lore', 'scrap', 'up', 'alive', 'runSeed'];
+const SAVE_FIELDS = ['cycle', 'pop', 'food', 'fuel', 'lore', 'scrap', 'up', 'alive', 'arms', 'runSeed'];
 function saveGame() {
   try {
     const data = {};
@@ -488,7 +498,8 @@ function startDay() {
   S.stats = { food: 0, fuel: 0, scrap: 0, relics: [], deposits: 0 };
   S.harpoonCd = 0;
   applyUpgrades();
-  saveGame();
+  S.arms = ARMS.morning(S.arms);
+  S.bombsInAir = [];
   const drng = mulberry32(S.runSeed + S.cycle * 7919);
   S.weather = rollWeather(drng, S.cycle);
   S.quest = makeQuest(drng, S.alive, S.cycle);
@@ -638,68 +649,84 @@ function endDay(outcome) {
     } else {
       showModal({
         title: `Ночь ${S.cycle}`,
-        body: nightBody(lines),
-        wide: true,
-        buttons: [{ label: 'Встретить утро', onClick: () => { S.cycle++; startDay(); } }],
+        body: lines.join('\n\n'),
+        buttons: [{ label: 'Войти в Ковчег', onClick: enterArk }],
       });
-      S.cycle++;
-      saveGame(); // если закрыть вкладку ночью, утро начнётся с этого места
-      S.cycle--;
     }
   }, 900);
 }
 
-function nightBody(lines) {
+// Карточки магазина: items — [{ title, desc, pips, price, disabled, reason, onBuy }]
+function shopGrid(intro, getItems) {
   const wrap = document.createElement('div');
-  for (const l of lines) {
-    const p = document.createElement('p');
-    p.textContent = l;
-    wrap.appendChild(p);
-  }
-  const h = document.createElement('h3');
-  h.textContent = 'Мастерская Ковчега';
-  wrap.appendChild(h);
+  const p = document.createElement('p');
+  p.textContent = intro;
+  wrap.appendChild(p);
   const bal = document.createElement('p');
   wrap.appendChild(bal);
   const grid = document.createElement('div');
   grid.className = 'shop';
   wrap.appendChild(grid);
   const render = () => {
-    bal.textContent = `Обломков: ⚙️ ${S.scrap}. Улучшения остаются до конца забега.`;
+    bal.textContent = `Обломков: ⚙️ ${S.scrap}.`;
     grid.innerHTML = '';
-    for (const up of UPGRADES) {
-      const lvl = S.up[up.key] || 0;
-      const cost = upgradeCost(up, lvl);
+    for (const it of getItems()) {
       const card = document.createElement('div');
       card.className = 'up';
-      const pips = '●'.repeat(lvl) + '○'.repeat(up.max - lvl);
-      card.innerHTML = `<div class="up-h"><b></b><span class="pips">${pips}</span></div><small></small>`;
-      card.querySelector('b').textContent = up.name;
-      card.querySelector('small').textContent = up.desc;
+      card.innerHTML = '<div class="up-h"><b></b><span class="pips"></span></div><small></small>';
+      card.querySelector('b').textContent = it.title;
+      card.querySelector('.pips').textContent = it.pips || '';
+      card.querySelector('small').textContent = it.desc;
       const btn = document.createElement('button');
-      if (cost === null) {
-        btn.textContent = 'Максимум';
-        btn.disabled = true;
-      } else {
-        btn.textContent = `Купить · ⚙️ ${cost}`;
-        btn.disabled = S.scrap < cost;
-        btn.onclick = () => {
-          if (S.scrap < cost) return;
-          S.scrap -= cost;
-          S.up[up.key] = lvl + 1;
-          audio.deposit();
-          S.cycle++;
-          saveGame();
-          S.cycle--;
-          render();
-        };
-      }
+      btn.textContent = it.reason || `Купить · ⚙️ ${it.price}`;
+      btn.disabled = !!it.disabled;
+      btn.onclick = () => {
+        if (btn.disabled) return;
+        it.onBuy();
+        audio.deposit();
+        render();
+      };
       card.appendChild(btn);
       grid.appendChild(card);
     }
   };
   render();
   return wrap;
+}
+
+function workshopItems() {
+  return UPGRADES.map((up) => {
+    const lvl = S.up[up.key] || 0;
+    const cost = upgradeCost(up, lvl);
+    return {
+      title: up.name,
+      desc: up.desc,
+      pips: '●'.repeat(lvl) + '○'.repeat(up.max - lvl),
+      price: cost,
+      disabled: cost === null || S.scrap < cost,
+      reason: cost === null ? 'Максимум' : null,
+      onBuy: () => { S.scrap -= cost; S.up[up.key] = lvl + 1; applyUpgrades(); },
+    };
+  });
+}
+
+function armoryItems() {
+  return ARMS.WEAPONS.map((w) => {
+    const why = ARMS.cannotBuy(S.arms, S.scrap, w.key);
+    const have = w.kind === 'ammo' ? `есть ${S.arms[w.key] || 0}` : S.arms[w.key] ? 'есть' : '';
+    return {
+      title: w.name,
+      desc: w.desc,
+      pips: have,
+      price: w.cost,
+      disabled: !!why,
+      reason: why === 'Уже есть.' || (why && why.startsWith('Больше')) ? why : null,
+      onBuy: () => {
+        const r = ARMS.buy(S.arms, S.scrap, w.key);
+        if (r.ok) { S.arms = r.arms; S.scrap = r.scrap; }
+      },
+    };
+  });
 }
 
 function showEndingChoice() {
@@ -815,6 +842,10 @@ function updateGame(dt) {
 
   updateNavigator(dt);
   updateHarpoon(dt);
+  if (pressed.has('KeyG')) throwBomb();
+  if (pressed.has('KeyQ')) fireFlare();
+  updateBombs(dt);
+  updateFlare(dt);
   updateLeeches(dt);
   updateDeeplings(dt);
   updateBlowhole(dt, p);
@@ -852,6 +883,7 @@ function updateGame(dt) {
 
 function updateLeeches(dt) {
   for (const L of city.leeches) {
+    if (L.dead) continue;
     L.cool -= dt;
     L.phase += dt * 6;
     const ly = backHeight(L.x, L.z);
@@ -1385,6 +1417,256 @@ function updateIntro(dt) {
   cameraEnv(s.id === 'night' ? 1 : p);
 }
 
+// ============ Ночь в Ковчеге ============
+const ark = new ArkInterior(TEX);
+const arkWorld = {
+  get colliders() { return ark.colliders; },
+  ocean: { surfaceAt: () => -1000, level: -1000 },
+  current: 0,
+  groundAt: () => 0,
+  wind: null,
+};
+let arkPlayerCamPitch = 0.3;
+
+function enterArk() {
+  S.mode = 'ark';
+  S.paused = false;
+  S.savedToday = false;
+  ark.setup(S.alive, S.pop);
+  ark.scene.add(player.mesh);
+  player.reset(new THREE.Vector3(0, 0, 5.6));
+  player.facing = 0;
+  player.mesh.rotation.set(0, 0, 0);
+  yaw = 0;
+  pitch = arkPlayerCamPitch;
+  post.setScene(ark.scene);
+  navDots.count = 0;
+  rain.visible = false;
+  $('hud').classList.add('hidden');
+  $('arkhud').classList.remove('hidden');
+  $('ark-title').textContent = `Ковчег · ночь ${S.cycle}`;
+  audio.setUnderwater(false);
+  lockPointer();
+  arkToast(`Жители ждут тебя. Механик Тагир — улучшения, Бран — оружие, Оск — летопись (сохранение). Ложись спать в своём гамаке.`);
+}
+
+function arkToast(text) {
+  const el = $('ark-hint');
+  el.textContent = text;
+  el.classList.remove('fade');
+  void el.offsetWidth;
+  el.classList.add('fade');
+}
+
+function leaveArk() {
+  scene.add(player.mesh);
+  post.setScene(scene);
+  $('arkhud').classList.add('hidden');
+  $('ark-labels').innerHTML = '';
+  S.cycle++;
+  startDay();
+}
+
+function sleep() {
+  if (!S.savedToday) {
+    S.paused = true;
+    showModal({
+      title: 'Лечь спать?',
+      body: 'Этот день не записан в летопись Оска. Если закрыть игру утром, прогресс с прошлой записи будет потерян.',
+      buttons: [
+        { label: 'Лечь без записи', onClick: () => { S.paused = false; leaveArk(); } },
+        { label: 'Вернуться', onClick: () => { S.paused = false; lockPointer(); } },
+      ],
+    });
+    return;
+  }
+  leaveArk();
+}
+
+function resumeArk() {
+  S.paused = false;
+  lockPointer();
+}
+
+function openStation(st) {
+  S.paused = true;
+  const alive = st.who ? S.alive.includes(st.who) : true;
+  if (st.kind === 'workshop' || st.kind === 'armory') {
+    const ownerId = st.kind === 'workshop' ? 'tagir' : 'bran';
+    const owner = RESIDENTS.find((r) => r.id === ownerId);
+    const here = S.alive.includes(ownerId);
+    const intro = here ? NIGHT_ROLES[ownerId].greet : `${owner.name} больше нет. Всё лежит так, как он оставил, — бери, что нужно, и клади обломки на место.`;
+    showModal({
+      title: st.kind === 'workshop' ? `Мастерская · ${here ? owner.name : 'верстак'}` : `Оружейная · ${here ? owner.name : 'стойка'}`,
+      body: shopGrid(intro, st.kind === 'workshop' ? workshopItems : armoryItems),
+      wide: true,
+      buttons: [{ label: 'Отойти', onClick: resumeArk }],
+    });
+  } else if (st.kind === 'chronicle') {
+    const here = S.alive.includes('osk');
+    showModal({
+      title: here ? 'Летопись · Советник Оск' : 'Летопись',
+      body: `${here ? NIGHT_ROLES.osk.greet : 'Книгу Совета теперь ведёт тот, кто остался. Перо ещё не высохло.'}\n\nДень ${S.cycle}. Жителей: ${S.pop}. Запасы: 🐟 ${S.food} · 🛢️ ${S.fuel}. Реликвий: ${S.lore}/${LORE.length}.${S.savedToday ? '\n\nЭтот день уже записан.' : ''}`,
+      buttons: [
+        { label: 'Записать день', onClick: () => {
+          S.cycle++;
+          saveGame(); // запись — это утро следующего дня
+          S.cycle--;
+          S.savedToday = true;
+          audio.deposit();
+          arkToast('День записан в летопись. Утром можно будет продолжить отсюда.');
+          resumeArk();
+        } },
+        { label: 'Отойти', onClick: resumeArk },
+      ],
+    });
+  } else if (st.kind === 'bed') {
+    S.paused = false;
+    sleep();
+  } else {
+    const W = WEATHER[rollWeather(mulberry32(S.runSeed + (S.cycle + 1) * 7919), S.cycle + 1)];
+    const line = nightLine(st.who, { weatherName: W.name, weatherNote: W.note, lore: S.lore, oxySeconds: Math.round(player.oxyTime), bombs: S.arms.bombs, pop: S.pop });
+    showModal({ title: st.label, body: alive ? line : '…', buttons: [{ label: 'Отойти', onClick: resumeArk }] });
+  }
+}
+
+const arkLabelV = new THREE.Vector3();
+function updateArk(dt) {
+  if (keys.has('ArrowLeft')) yaw += dt * 2;
+  if (keys.has('ArrowRight')) yaw -= dt * 2;
+  player.update(dt, keys, yaw, arkWorld);
+  // стены зала
+  const r = Math.hypot(player.pos.x, player.pos.z);
+  if (r > ARK_R - 0.7) {
+    player.pos.x *= (ARK_R - 0.7) / r;
+    player.pos.z *= (ARK_R - 0.7) / r;
+    player.mesh.position.copy(player.pos);
+  }
+  ark.update(dt, player.pos);
+  const st = ark.nearest(player.pos.x, player.pos.z);
+  const verb = st && { workshop: 'улучшения', armory: 'оружие', chronicle: 'записать день', bed: 'лечь спать', talk: 'поговорить' }[st.kind];
+  $('ark-prompt').innerHTML = st ? `<b>E</b> — ${st.label}: ${verb}` : '';
+  $('ark-prompt').classList.toggle('hidden', !st);
+  $('ark-stats').textContent = `👥 ${S.pop} · 🐟 ${S.food} · 🛢️ ${S.fuel} · ⚙️ ${S.scrap} · ◈ ${S.lore}/7`;
+  if (pressed.has('KeyE') && st) openStation(st);
+  if (pressed.has('KeyJ')) showJournal();
+
+  // камера: внутри зала, под куполом
+  const dist = 4.2;
+  camTarget.set(player.pos.x, player.pos.y + 1.6, player.pos.z);
+  let cx = camTarget.x + Math.sin(yaw) * Math.cos(pitch) * dist;
+  let cz = camTarget.z + Math.cos(yaw) * Math.cos(pitch) * dist;
+  const cy = Math.min(6.2, Math.max(0.6, camTarget.y + Math.sin(pitch) * dist));
+  const cr = Math.hypot(cx, cz);
+  if (cr > ARK_R - 0.4) { cx *= (ARK_R - 0.4) / cr; cz *= (ARK_R - 0.4) / cr; }
+  camera.position.set(cx, cy, cz);
+  camera.lookAt(camTarget);
+
+  // имена над жителями
+  const box = $('ark-labels');
+  if (box.children.length !== ark.stations.length) {
+    box.innerHTML = '';
+    for (const s of ark.stations) {
+      const el = document.createElement('div');
+      el.className = 'ark-label' + (s.person ? ' person' : '');
+      el.textContent = s.label;
+      box.appendChild(el);
+    }
+  }
+  ark.stations.forEach((s, i) => {
+    const el = box.children[i];
+    arkLabelV.set(s.x, s.person ? 2.35 : 2.1, s.z).project(camera);
+    const d = Math.hypot(s.x - player.pos.x, s.z - player.pos.z);
+    const vis = arkLabelV.z < 1 && d < 9;
+    el.style.opacity = vis ? Math.max(0, Math.min(1, (9 - d) / 3)) : 0;
+    el.style.left = `${((arkLabelV.x + 1) / 2) * window.innerWidth}px`;
+    el.style.top = `${((1 - arkLabelV.y) / 2) * window.innerHeight}px`;
+  });
+}
+
+// ============ Оружие ============
+const bombGeo = new THREE.SphereGeometry(0.2, 10, 8);
+const bombMat = new THREE.MeshStandardMaterial({ color: 0xeeeadc, roughness: 1 });
+function throwBomb() {
+  if (S.arms.bombs <= 0) { toast('Солевых бомб нет. Бран продаёт их ночью в Ковчеге.', 'warn'); return; }
+  S.arms.bombs--;
+  const fx = -Math.sin(yaw);
+  const fz = -Math.cos(yaw);
+  const mesh = new THREE.Mesh(bombGeo, bombMat);
+  mesh.position.set(player.pos.x + fx * 0.6, player.pos.y + 1.6, player.pos.z + fz * 0.6);
+  mesh.castShadow = true;
+  scene.add(mesh);
+  S.bombsInAir.push({ mesh, vel: new THREE.Vector3(fx * 8, 6, fz * 8), t: 0 }); // летит метров на шесть
+  player.facing = yaw;
+  audio.tone({ type: 'triangle', f0: 500, f1: 260, dur: 0.2, vol: 0.12 });
+}
+
+function explodeBomb(b) {
+  const c = b.mesh.position;
+  scene.remove(b.mesh);
+  audio.tone({ type: 'sawtooth', f0: 140, f1: 40, dur: 0.6, vol: 0.25, lp: 900 });
+  audio.blow();
+  for (let i = 0; i < 40; i++) {
+    ambient.spray.spawn(c.x, c.y + 0.3, c.z, (Math.random() - 0.5) * 7, 2 + Math.random() * 5, (Math.random() - 0.5) * 7, 1.2, 0.5 + Math.random() * 0.5);
+  }
+  const hit = ARMS.inBlast({ x: c.x, z: c.z }, city.leeches);
+  for (const i of hit) killLeech(city.leeches[i]);
+  for (const D of deeplings) if (D.active && D.pos.distanceTo(c) < ARMS.BOMB_SCARE_RADIUS) D.scare();
+  if (hit.length) toast(hit.length === 1 ? 'Соль сожгла пиявку!' : `Соль сожгла пиявок: ${hit.length}!`, 'ok');
+}
+
+function updateBombs(dt) {
+  for (const b of S.bombsInAir) {
+    b.t += dt;
+    b.vel.y -= 20 * dt;
+    b.mesh.position.addScaledVector(b.vel, dt);
+    b.mesh.rotation.x += dt * 8;
+    const p = b.mesh.position;
+    const g = city.groundAt(p.x, p.z, p.y + 0.5);
+    if (p.y <= g + 0.15 || p.y <= ocean.surfaceAt(p.x, p.z) || b.t > 2.5) b.done = true;
+  }
+  for (const b of S.bombsInAir) if (b.done) explodeBomb(b);
+  S.bombsInAir = S.bombsInAir.filter((b) => !b.done);
+}
+
+function fireFlare() {
+  if (!S.arms.flare) { toast('Ракетницы нет. Бран продаёт её ночью в Ковчеге.', 'warn'); return; }
+  if (!S.arms.flareReady) { toast('Ракетница перезарядится к утру.', 'warn'); return; }
+  S.arms.flareReady = false;
+  audio.tone({ type: 'sawtooth', f0: 220, f1: 1400, dur: 0.7, vol: 0.15, lp: 3000 });
+  const light = new THREE.PointLight(0xff4a3a, 220, 70, 1.4);
+  const core = new THREE.Mesh(new THREE.SphereGeometry(0.35, 10, 8), new THREE.MeshBasicMaterial({ color: 0xffb0a0 }));
+  light.add(core);
+  light.position.set(player.pos.x, player.pos.y + 2, player.pos.z);
+  scene.add(light);
+  S.flare = { light, t: 0 };
+  for (const D of deeplings) if (D.active && D.pos.distanceTo(player.pos) < ARMS.FLARE_RADIUS * 1.5) { D.scare(); D.flee = 20; }
+  let n = 0;
+  for (const L of city.leeches) {
+    if (!L.dead && Math.hypot(L.x - player.pos.x, L.z - player.pos.z) < ARMS.FLARE_RADIUS) { L.cool = 14; n++; }
+  }
+  toast(`Сигнальная ракета! Глубинники ушли на глубину${n ? `, пиявки уснули: ${n}` : ''}.`, 'ok');
+}
+
+function updateFlare(dt) {
+  const f = S.flare;
+  if (!f) return;
+  f.t += dt;
+  f.light.position.y += dt * (f.t < 1.5 ? 18 : -1.5);
+  f.light.intensity = 220 * Math.max(0, 1 - f.t / 12) * (0.85 + Math.random() * 0.3);
+  if (f.t > 12) {
+    scene.remove(f.light);
+    S.flare = null;
+  }
+}
+
+function killLeech(L) {
+  if (L.dead) return;
+  L.dead = true;
+  city.group.remove(L.mesh);
+  for (let i = 0; i < 14; i++) ambient.spray.spawn(L.x, L.mesh.position.y + 0.3, L.z, (Math.random() - 0.5) * 3, 1 + Math.random() * 2, (Math.random() - 0.5) * 3, 0.8, 0.3);
+}
+
 const HARPOON_CD = [1.6, 1.1, 0.7];
 function updateHarpoon(dt) {
   S.harpoonCd -= dt;
@@ -1401,13 +1683,19 @@ function updateHarpoon(dt) {
   player.mesh.rotation.y = yaw;
   let hit = 0;
   for (const L of city.leeches) {
+    if (L.dead) continue;
     const dx = L.x - player.pos.x;
     const dz = L.z - player.pos.z;
     const d = Math.hypot(dx, dz);
     if (d > range || Math.abs(L.mesh.position.y - player.pos.y) > 2.5) continue;
     if (d > 1 && (dx * fx + dz * fz) / d < 0.2) continue;
-    L.push = { x: dx / (d || 1), z: dz / (d || 1), t: 0.45 };
-    L.cool = 3;
+    if (S.arms.spear) {
+      killLeech(L);
+      toast('Острога пронзила пиявку!', 'ok');
+    } else {
+      L.push = { x: dx / (d || 1), z: dz / (d || 1), t: 0.45 };
+      L.cool = 3;
+    }
     hit++;
   }
   for (const D of deeplings) {
@@ -1611,13 +1899,14 @@ if (saved && saved.pop > 0) {
     for (const k of SAVE_FIELDS) if (k in saved) S[k] = saved[k];
     S.up = S.up || {};
     S.alive = S.alive || RESIDENTS.map((r) => r.id);
+    S.arms = { ...ARMS.emptyArms(), ...(S.arms || {}) };
     startDay();
   });
 }
 
 
 // для фона меню и для автотестов
-window.__deepback = { lineClear: (...a) => lineClear(...a), introPoint: (s) => introPoint(s), S, sky, envScene, whale, ambient, scene, post, voice, intro, startIntro, endIntro, player, city, ocean, deeplings, rain, navDots, startRun, startDay, endDay, keys, pressed, setYaw: (v) => (yaw = v) };
+window.__deepback = { ark, enterArk, killLeech, lineClear: (...a) => lineClear(...a), introPoint: (s) => introPoint(s), S, sky, envScene, whale, ambient, scene, post, voice, intro, startIntro, endIntro, player, city, ocean, deeplings, rain, navDots, startRun, startDay, endDay, keys, pressed, setYaw: (v) => (yaw = v) };
 
 // ============ Цикл ============
 const clock = new THREE.Clock();
@@ -1643,6 +1932,8 @@ function frame() {
     else updateGame(dt);
     updateCamera(dt);
     updateHud();
+  } else if (S.mode === 'ark' && !S.paused) {
+    updateArk(dt);
   } else if (S.mode === 'night') {
     ocean.update(S.time, W1 + 6, player.pos.x, player.pos.z);
   }

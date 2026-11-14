@@ -1,0 +1,382 @@
+// Ковчег изнутри: ночное убежище жителей. Здесь покупают улучшения и оружие,
+// записывают день в летопись и ложатся спать.
+import * as THREE from 'three';
+import { RESIDENTS, NIGHT_ROLES } from './residents.js';
+
+export const ARK_R = 8; // радиус зала
+export const DOOR = new THREE.Vector3(0, 0, 6.6);
+
+// Где кто стоит: угол (0 — у двери, +z) и расстояние от центра
+const PLACES = {
+  tagir: { a: 1.25, r: 5.6 },
+  bran: { a: -1.25, r: 5.6 },
+  osk: { a: Math.PI, r: 5.4 },
+  agata: { a: 0.35, r: 2.2 },
+  mira: { a: -2.2, r: 5.2 },
+  lina: { a: 2.25, r: 5.0 },
+  yos: { a: 0.75, r: 3.6 },
+  vey: { a: -0.7, r: 3.7 },
+};
+const BED = { a: 2.75, r: 6.4 };
+
+// Внешность жителей: одежда, кожа, волосы, головной убор
+const LOOKS = {
+  mira: { body: 0x6b4e7a, skin: 0xe0b89a, hair: 0xd8d8d8, hat: 'scarf', hatColor: 0x8a3b3b, scale: 0.93 },
+  tagir: { body: 0x3e5560, skin: 0xb98a65, hair: 0x2a2018, hat: 'cap', hatColor: 0x2b2b2b, beard: true, scale: 1.02 },
+  yos: { body: 0x4f8a63, skin: 0xe9c3a1, hair: 0x6b4a2c, hat: null, scale: 0.62 },
+  agata: { body: 0x7a3a24, skin: 0xd09a78, hair: 0x2a1a12, hat: 'scarf', hatColor: 0x3b3b3b, scale: 1.0 },
+  bran: { body: 0x2e3438, skin: 0xa77a5c, hair: 0x8a8a8a, hat: null, beard: true, scale: 1.08 },
+  lina: { body: 0xd8d0c0, skin: 0xedc8a8, hair: 0xa0522d, hat: null, scale: 0.95 },
+  osk: { body: 0x2a2a46, skin: 0xd8b090, hair: 0x9a9a9a, hat: 'tall', hatColor: 0x1d1d2c, scale: 1.0 },
+  vey: { body: 0x5a6e8a, skin: 0xe2b896, hair: 0xc8a050, hat: 'cap', hatColor: 0x5a6e8a, scale: 0.85 },
+};
+
+function std(color, extra = {}) {
+  return new THREE.MeshStandardMaterial({ color, roughness: 0.85, ...extra });
+}
+
+function villager(look) {
+  const g = new THREE.Group();
+  const body = std(look.body);
+  const skin = std(look.skin, { roughness: 0.6 });
+  const dark = std(0x2a2420);
+  const add = (geo, mat, x, y, z, parent = g) => {
+    const m = new THREE.Mesh(geo, mat);
+    m.position.set(x, y, z);
+    m.castShadow = true;
+    parent.add(m);
+    return m;
+  };
+  for (const s of [-0.13, 0.13]) add(new THREE.CapsuleGeometry(0.11, 0.5, 4, 8), dark, s, 0.38, 0);
+  const torso = add(new THREE.CapsuleGeometry(0.3, 0.55, 6, 12), body, 0, 1.05, 0);
+  torso.scale.set(1, 1, 0.8);
+  // фартук/юбка — расширение книзу
+  add(new THREE.CylinderGeometry(0.3, 0.42, 0.45, 12), body, 0, 0.72, 0);
+  const arms = [];
+  for (const s of [-1, 1]) {
+    const arm = new THREE.Group();
+    arm.position.set(s * 0.36, 1.32, 0);
+    add(new THREE.CapsuleGeometry(0.08, 0.45, 4, 8), body, 0, -0.27, 0, arm);
+    add(new THREE.SphereGeometry(0.08, 8, 6), skin, 0, -0.56, 0, arm);
+    arm.rotation.z = s * 0.12;
+    g.add(arm);
+    arms.push(arm);
+  }
+  const head = new THREE.Group();
+  head.position.y = 1.72;
+  g.add(head);
+  add(new THREE.SphereGeometry(0.2, 16, 12), skin, 0, 0, 0, head);
+  // глаза смотрят вперёд (по -z)
+  for (const s of [-0.07, 0.07]) add(new THREE.SphereGeometry(0.025, 6, 4), std(0x111111), s, 0.03, -0.18, head);
+  const hairMat = std(look.hair);
+  const hair = add(new THREE.SphereGeometry(0.205, 16, 10, 0, Math.PI * 2, 0, Math.PI * 0.55), hairMat, 0, 0.02, 0.02, head);
+  hair.rotation.x = -0.25;
+  if (look.beard) add(new THREE.SphereGeometry(0.15, 10, 8), hairMat, 0, -0.12, -0.09, head).scale.set(1, 0.9, 0.7);
+  if (look.hat === 'cap') {
+    add(new THREE.SphereGeometry(0.215, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2), std(look.hatColor), 0, 0.05, 0, head);
+    add(new THREE.BoxGeometry(0.22, 0.03, 0.14), std(look.hatColor), 0, 0.06, -0.22, head);
+  } else if (look.hat === 'scarf') {
+    add(new THREE.SphereGeometry(0.225, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.62), std(look.hatColor), 0, 0.01, 0.02, head);
+  } else if (look.hat === 'tall') {
+    add(new THREE.CylinderGeometry(0.17, 0.19, 0.3, 14), std(look.hatColor), 0, 0.27, 0, head);
+    add(new THREE.CylinderGeometry(0.28, 0.28, 0.03, 18), std(look.hatColor), 0, 0.13, 0, head);
+  }
+  g.scale.setScalar(look.scale || 1);
+  g.userData = { head, arms, phase: Math.random() * 6 };
+  return g;
+}
+
+// Спящий в гамаке безымянный житель
+function hammock(mat, sleeper) {
+  const g = new THREE.Group();
+  const cloth = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.45, 2.2, 14, 1, true, Math.PI * 0.15, Math.PI * 0.7), mat);
+  cloth.rotation.z = Math.PI / 2;
+  cloth.rotation.y = Math.PI;
+  cloth.position.y = 1.05;
+  g.add(cloth);
+  for (const s of [-1.15, 1.15]) {
+    const rope = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 1.8, 4), std(0x3b3128));
+    rope.position.set(s, 1.8, 0);
+    rope.rotation.z = s * 0.25;
+    g.add(rope);
+  }
+  if (sleeper) {
+    const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.22, 1.1, 4, 8), std(sleeper));
+    body.rotation.z = Math.PI / 2;
+    body.position.set(0, 0.92, 0);
+    g.add(body);
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.17, 10, 8), std(0xd8ac8a));
+    head.position.set(-0.85, 0.98, 0);
+    g.add(head);
+  }
+  return g;
+}
+
+export class ArkInterior {
+  constructor(TEX) {
+    const scene = (this.scene = new THREE.Scene());
+    scene.background = new THREE.Color(0x07090b);
+    scene.fog = new THREE.Fog(0x0b0d10, 10, 30);
+    this.colliders = [];
+    this.stations = [];
+    this.time = 0;
+
+    // свет: тёплая печь и фонари, холодный отсвет воды из иллюминаторов
+    scene.add(new THREE.HemisphereLight(0x8fb4c8, 0x2a1a10, 0.35));
+    this.stoveLight = new THREE.PointLight(0xff8a3a, 40, 16, 1.6);
+    this.stoveLight.position.set(0, 1.6, 0);
+    this.stoveLight.castShadow = true;
+    scene.add(this.stoveLight);
+    this.lamps = [];
+    for (const [x, z] of [[4, 2.5], [-4, 2.5], [0, -4.6]]) {
+      const l = new THREE.PointLight(0xffc070, 14, 11, 1.7);
+      l.position.set(x, 4.2, z);
+      scene.add(l);
+      this.lamps.push(l);
+      const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.16, 10, 8), new THREE.MeshStandardMaterial({ color: 0xffe2a8, emissive: 0xffb860, emissiveIntensity: 3 }));
+      bulb.position.copy(l.position);
+      scene.add(bulb);
+      const chain = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 3.2, 4), std(0x222222));
+      chain.position.set(x, 5.9, z);
+      scene.add(chain);
+    }
+
+    // пол из досок
+    const floorMat = std(0x8a6a4a);
+    const wallMat = new THREE.MeshStandardMaterial({ color: 0x6d7a80, roughness: 0.75, metalness: 0.4, side: THREE.BackSide });
+    const domeMat = new THREE.MeshStandardMaterial({ color: 0x80503a, roughness: 0.8, metalness: 0.3, side: THREE.BackSide });
+    if (TEX) {
+      const p = TEX.planks([150, 112, 78]);
+      p.map.repeat.set(5, 5);
+      p.bump.repeat.set(5, 5);
+      floorMat.map = p.map;
+      floorMat.bumpMap = p.bump;
+      floorMat.color.set(0xffffff);
+      const w = TEX.rustyMetal([100, 112, 118]);
+      for (const k of ['map', 'bump', 'rough']) w[k].repeat.set(8, 2);
+      Object.assign(wallMat, { map: w.map, bumpMap: w.bump, roughnessMap: w.rough, roughness: 1 });
+      wallMat.color.set(0xffffff);
+      const d = TEX.rustyMetal([130, 72, 50]);
+      for (const k of ['map', 'bump', 'rough']) d[k].repeat.set(6, 2);
+      Object.assign(domeMat, { map: d.map, bumpMap: d.bump, roughnessMap: d.rough, roughness: 1 });
+      domeMat.color.set(0xffffff);
+    }
+    const floor = new THREE.Mesh(new THREE.CircleGeometry(ARK_R + 0.2, 48), floorMat);
+    floor.rotation.x = -Math.PI / 2;
+    floor.receiveShadow = true;
+    scene.add(floor);
+    const wall = new THREE.Mesh(new THREE.CylinderGeometry(ARK_R + 0.2, ARK_R + 0.2, 7, 48, 1, true), wallMat);
+    wall.position.y = 3.5;
+    wall.receiveShadow = true;
+    scene.add(wall);
+    const dome = new THREE.Mesh(new THREE.SphereGeometry(ARK_R + 0.2, 40, 16, 0, Math.PI * 2, 0, Math.PI / 2), domeMat);
+    dome.position.y = 7;
+    scene.add(dome);
+    // рёбра купола
+    for (let i = 0; i < 12; i++) {
+      const rib = new THREE.Mesh(new THREE.TorusGeometry(ARK_R, 0.09, 6, 32, Math.PI / 2), std(0x2a2a2a, { metalness: 0.6 }));
+      rib.position.y = 7;
+      rib.rotation.set(0, (i / 12) * Math.PI * 2, Math.PI / 2);
+      scene.add(rib);
+    }
+
+    // иллюминаторы: за ними тёмная вода, по ним изредка проходит свет
+    this.portMats = [];
+    for (let i = 0; i < 12; i++) {
+      const a = (i / 12) * Math.PI * 2 + 0.26;
+      if (Math.abs(Math.sin(a / 2)) < 0.12) continue; // не над дверью
+      const x = Math.sin(a) * ARK_R;
+      const z = Math.cos(a) * ARK_R;
+      const pm = new THREE.MeshStandardMaterial({ color: 0x061418, emissive: 0x0e3a44, emissiveIntensity: 1 });
+      const glass = new THREE.Mesh(new THREE.CircleGeometry(0.55, 20), pm);
+      glass.position.set(x * 0.995, 3.6, z * 0.995);
+      glass.lookAt(0, 3.6, 0);
+      scene.add(glass);
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.58, 0.08, 8, 20), std(0xb08a50, { metalness: 0.9, roughness: 0.3 }));
+      ring.position.copy(glass.position);
+      ring.lookAt(0, 3.6, 0);
+      scene.add(ring);
+      this.portMats.push({ mat: pm, a });
+    }
+
+    // дверь-шлюз
+    const door = new THREE.Mesh(new THREE.BoxGeometry(2.6, 3.6, 0.3), std(0x1d2124, { metalness: 0.6 }));
+    door.position.set(0, 1.8, ARK_R - 0.05);
+    scene.add(door);
+    const wheel = new THREE.Mesh(new THREE.TorusGeometry(0.45, 0.06, 8, 20), std(0xb08a50, { metalness: 0.9, roughness: 0.3 }));
+    wheel.position.set(0, 1.9, ARK_R - 0.25);
+    scene.add(wheel);
+
+    // печь в центре
+    const iron = std(0x2b2d30, { metalness: 0.7, roughness: 0.5 });
+    const stove = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 1.05, 1.3, 20), iron);
+    stove.position.y = 0.65;
+    stove.castShadow = true;
+    scene.add(stove);
+    const pipe = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 9, 12), iron);
+    pipe.position.y = 5.5;
+    scene.add(pipe);
+    this.fireMat = new THREE.MeshStandardMaterial({ color: 0xff7a2a, emissive: 0xff6a1a, emissiveIntensity: 3 });
+    const fire = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.35, 0.05), this.fireMat);
+    fire.position.set(0, 0.6, 1.03);
+    scene.add(fire);
+    this.colliders.push({ type: 'circle', x: 0, z: 0, r: 1.15, bottom: -1, topAt: () => 3 });
+
+    // станции: верстак, оружейная стойка, летопись, свой гамак
+    const pos = (p) => new THREE.Vector3(Math.sin(p.a) * p.r, 0, Math.cos(p.a) * p.r);
+    const wood = std(0x6a4a30);
+    const bench = new THREE.Group();
+    const top = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.15, 0.9), wood);
+    top.position.y = 0.95;
+    bench.add(top);
+    for (const [x, z] of [[-1, -0.35], [1, -0.35], [-1, 0.35], [1, 0.35]]) {
+      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.95, 0.12), wood);
+      leg.position.set(x, 0.47, z);
+      bench.add(leg);
+    }
+    for (let i = 0; i < 5; i++) {
+      const t = new THREE.Mesh(new THREE.BoxGeometry(0.08 + Math.random() * 0.25, 0.08, 0.3), std(0x8a96a0, { metalness: 0.8 }));
+      t.position.set(-0.8 + i * 0.4, 1.07, (Math.random() - 0.5) * 0.4);
+      t.rotation.y = Math.random();
+      bench.add(t);
+    }
+    this.placeStation(bench, PLACES.tagir, 1.4, 'workshop');
+
+    const rack = new THREE.Group();
+    const back = new THREE.Mesh(new THREE.BoxGeometry(2, 2.2, 0.15), wood);
+    back.position.y = 1.3;
+    rack.add(back);
+    for (let i = 0; i < 4; i++) {
+      const spear = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 2, 6), std(0xd8d2bf));
+      spear.position.set(-0.7 + i * 0.45, 1.3, -0.12);
+      spear.rotation.z = 0.08;
+      rack.add(spear);
+    }
+    for (let i = 0; i < 3; i++) {
+      const bomb = new THREE.Mesh(new THREE.SphereGeometry(0.14, 10, 8), std(0xe8e4d8, { roughness: 1 }));
+      bomb.position.set(-0.4 + i * 0.4, 0.5, -0.25);
+      rack.add(bomb);
+    }
+    this.placeStation(rack, PLACES.bran, 1.4, 'armory');
+
+    const lectern = new THREE.Group();
+    const stand = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.25, 1.1, 8), wood);
+    stand.position.y = 0.55;
+    lectern.add(stand);
+    const desk = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.08, 0.6), wood);
+    desk.position.y = 1.15;
+    desk.rotation.x = -0.35;
+    lectern.add(desk);
+    const book = new THREE.Mesh(new THREE.BoxGeometry(0.65, 0.07, 0.45), std(0x5a1e1e));
+    book.position.set(0, 1.21, 0);
+    book.rotation.x = -0.35;
+    lectern.add(book);
+    const candle = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.2, 8), new THREE.MeshStandardMaterial({ color: 0xfff0d0, emissive: 0xffc070, emissiveIntensity: 2 }));
+    candle.position.set(0.35, 1.3, 0.1);
+    lectern.add(candle);
+    this.placeStation(lectern, PLACES.osk, 1.3, 'chronicle');
+
+    this.hammockMat = std(0xc9b79a, { side: THREE.DoubleSide });
+    const bed = hammock(this.hammockMat, null);
+    this.placeStation(bed, BED, 1.6, 'bed');
+
+    this.people = new THREE.Group();
+    scene.add(this.people);
+    this.labelPoints = [];
+    this.DOOR = DOOR;
+    this.bedPos = pos(BED);
+  }
+
+  placeStation(obj, p, radius, kind) {
+    const x = Math.sin(p.a) * p.r;
+    const z = Math.cos(p.a) * p.r;
+    obj.position.set(x, 0, z);
+    obj.lookAt(0, 0, 0);
+    obj.traverse((c) => c.isMesh && (c.castShadow = c.receiveShadow = true));
+    this.scene.add(obj);
+    this.colliders.push({ type: 'circle', x, z, r: 0.85, bottom: -1, topAt: () => 3 });
+    this.stations.push({ kind, x, z, radius: radius + 0.85, label: { workshop: 'Верстак', armory: 'Оружейная стойка', chronicle: 'Летопись', bed: 'Твой гамак' }[kind] });
+  }
+
+  // Каждую ночь: живые жители на своих местах, остальные спят в гамаках
+  setup(alive, pop) {
+    while (this.people.children.length) this.people.remove(this.people.children[0]);
+    this.colliders = this.colliders.filter((c) => !c.person);
+    this.stations = this.stations.filter((s) => s.kind !== 'talk');
+    this.npcs = [];
+    for (const id of alive) {
+      const p = PLACES[id];
+      const r = RESIDENTS.find((x) => x.id === id);
+      if (!p || !r) continue;
+      const count = id === 'vey' ? 2 : 1;
+      for (let k = 0; k < count; k++) {
+        const v = villager(LOOKS[id]);
+        const off = count > 1 ? (k - 0.5) * 0.9 : 0;
+        const a = p.a + off / p.r;
+        // жители магазинов стоят чуть ближе к центру, за своим прилавком
+        const rr = NIGHT_ROLES[id] ? p.r - 1.3 : p.r;
+        v.position.set(Math.sin(a) * rr, 0, Math.cos(a) * rr);
+        v.lookAt(0, 0, 0);
+        v.rotateY(Math.PI);
+        this.people.add(v);
+        this.npcs.push({ id, mesh: v, name: r.name });
+        this.colliders.push({ type: 'circle', x: v.position.x, z: v.position.z, r: 0.45, bottom: -1, topAt: () => 2.2, person: true });
+        if (k === 0) this.stations.push({ kind: NIGHT_ROLES[id] ? NIGHT_ROLES[id].shop : 'talk', who: id, x: v.position.x, z: v.position.z, radius: 1.9, label: r.name, person: true });
+      }
+    }
+    // безымянные жители — в гамаках вдоль стены
+    const named = alive.length;
+    const sleepers = Math.max(0, Math.min(8, pop - named));
+    const colors = [0x4f6b6a, 0x6f5a46, 0x5d4a3f, 0x3f5560, 0x7a6a55];
+    let placed = 0;
+    for (let i = 0; i < 16 && placed < sleepers; i++) {
+      const a = (i / 16) * Math.PI * 2 + 0.2;
+      const near = [...Object.values(PLACES), BED].some((p) => Math.abs(Math.atan2(Math.sin(a - p.a), Math.cos(a - p.a))) < 0.45 && p.r > 4.5);
+      if (near || Math.abs(Math.sin(a / 2)) < 0.25) continue;
+      const h = hammock(this.hammockMat, colors[placed % colors.length]);
+      h.position.set(Math.sin(a) * 7.1, 0, Math.cos(a) * 7.1);
+      h.lookAt(0, 0, 0);
+      h.rotateY(Math.PI / 2);
+      this.people.add(h);
+      placed++;
+    }
+    this.sleepers = placed;
+  }
+
+  // Ближайшая станция или житель в радиусе действия
+  nearest(x, z) {
+    let best = null;
+    let bd = Infinity;
+    for (const s of this.stations) {
+      const d = Math.hypot(s.x - x, s.z - z);
+      if (d < s.radius && d < bd) {
+        bd = d;
+        best = s;
+      }
+    }
+    return best;
+  }
+
+  update(dt, playerPos) {
+    this.time += dt;
+    const t = this.time;
+    this.stoveLight.intensity = 34 + Math.sin(t * 13) * 4 + Math.sin(t * 7.3) * 3;
+    this.fireMat.emissiveIntensity = 2.6 + Math.sin(t * 11) * 0.5;
+    // что-то огромное проплывает за иллюминаторами
+    const sweep = (t * 0.35) % (Math.PI * 2);
+    for (const p of this.portMats) {
+      const d = Math.abs(Math.atan2(Math.sin(p.a - sweep), Math.cos(p.a - sweep)));
+      p.mat.emissiveIntensity = 0.6 + Math.max(0, 1 - d * 2.5) * 2.5;
+    }
+    // жители дышат и поворачивают голову к игроку
+    for (const n of this.npcs || []) {
+      const u = n.mesh.userData;
+      u.phase += dt;
+      n.mesh.scale.y = (LOOKS[n.id].scale || 1) * (1 + Math.sin(u.phase * 1.6) * 0.012);
+      const d = Math.hypot(playerPos.x - n.mesh.position.x, playerPos.z - n.mesh.position.z);
+      const local = n.mesh.worldToLocal(new THREE.Vector3(playerPos.x, 1.7, playerPos.z));
+      const target = d < 5 ? Math.max(-0.9, Math.min(0.9, Math.atan2(-local.x, -local.z))) : 0;
+      u.head.rotation.y += (target - u.head.rotation.y) * Math.min(1, dt * 4);
+    }
+  }
+}

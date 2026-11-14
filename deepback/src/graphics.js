@@ -155,6 +155,12 @@ export class Post {
     this.resize();
   }
 
+  // Ночью рисуем не открытый мир, а зал Ковчега
+  setScene(scene) {
+    this.scene = scene;
+    if (this.composer) this.composer.passes[0].scene = scene;
+  }
+
   resize() {
     const w = window.innerWidth;
     const h = window.innerHeight;

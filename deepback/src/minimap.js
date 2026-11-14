@@ -135,7 +135,7 @@ export class Minimap {
     }
 
     // враги
-    for (const l of st.leeches) this.dot(l.x, l.z, 2.4, MAP_COLORS.leech);
+    for (const l of st.leeches) if (!l.dead) this.dot(l.x, l.z, 2.4, MAP_COLORS.leech);
     for (const d of st.deeplings) {
       if (!d.active) continue;
       c.fillStyle = MAP_COLORS.deepling;

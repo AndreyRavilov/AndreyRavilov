@@ -86,6 +86,18 @@
   #cine-sub { position: absolute; left: 50%; bottom: calc(11vh + 26px); transform: translateX(-50%); width: min(900px, 86vw); margin: 0; text-align: center; font-size: clamp(18px, 2.1vw, 26px); line-height: 1.45; color: #f2fbfa; text-shadow: 0 2px 12px rgba(0,0,0,.9), 0 0 2px #000; opacity: 0; }
   #cine-sub.show { animation: subIn 7s ease forwards; }
   @keyframes subIn { 0% { opacity: 0; transform: translate(-50%, 8px); } 8% { opacity: 1; transform: translate(-50%, 0); } 88% { opacity: 1; } 100% { opacity: .0; } }
+  #weapons { font-size: 13px; display: flex; gap: 6px; align-items: center; }
+  #weapons .lbl, #cargo .lbl { font-size: 11px; color: var(--accent); border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; letter-spacing: 0; }
+  #arkhud { position: fixed; inset: 0; pointer-events: none; }
+  #ark-top { position: absolute; top: calc(14px + env(safe-area-inset-top, 0px)); left: max(14px, env(safe-area-inset-left, 0px)); }
+  #ark-stats { font-size: 15px; font-weight: 600; margin-top: 4px; }
+  #ark-hint { position: absolute; top: calc(14px + env(safe-area-inset-top, 0px)); left: 50%; transform: translateX(-50%); width: min(620px, 90vw); text-align: center; font-size: 14px; opacity: 0; }
+  #ark-hint.fade { animation: hintFade 9s ease forwards; }
+  @keyframes hintFade { 0% { opacity: 0; } 6% { opacity: 1; } 85% { opacity: 1; } 100% { opacity: 0; } }
+  #ark-prompt { position: absolute; left: 50%; bottom: 60px; transform: translateX(-50%); background: var(--panel); border: 1px solid var(--line); padding: 10px 18px; border-radius: 10px; font-size: 16px; }
+  #ark-prompt b { color: var(--accent); border: 1px solid var(--accent); border-radius: 5px; padding: 0 6px; }
+  .ark-label { position: absolute; transform: translate(-50%, -100%); font-size: 13px; color: #f4ead8; text-shadow: 0 1px 4px #000, 0 0 2px #000; white-space: nowrap; transition: opacity .2s; }
+  .ark-label.person { font-weight: 700; color: #ffe2b0; }
   .cine-label { position: absolute; transform: translate(-50%, -100%); padding: 6px 12px; border-radius: 8px; background: rgba(6, 16, 22, .72); border: 1px solid var(--accent); color: #eafffb; font-size: clamp(14px, 1.4vw, 18px); font-weight: 600; white-space: nowrap; opacity: 0; transition: opacity .25s; }
   .cine-label::after { content: ''; position: absolute; left: 50%; bottom: -9px; transform: translateX(-50%); border: 5px solid transparent; border-top-color: var(--accent); }
   #cine-title { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; opacity: 0; transition: opacity 1.2s; }
@@ -169,6 +181,7 @@
   <div id="prompt" class="hidden"></div>
   <div id="bottom">
     <div class="panel" id="cargo"></div>
+    <div class="panel" id="weapons"></div>
     <div class="panel hidden" id="oxy"><span>O₂</span><div class="bar"><div id="oxybar"></div></div></div>
   </div>
   <div id="navline" class="panel"><span class="lbl">НАВИГАТОР</span> <b id="nav-target">Авто</b> <span id="nav-dist"></span> <kbd>Tab</kbd></div>
@@ -187,6 +200,13 @@
   <button id="skip">Пропустить <kbd>Space</kbd></button>
 </div>
 
+<div id="arkhud" class="hidden">
+  <div class="panel" id="ark-top"><div class="label" id="ark-title">Ковчег</div><div id="ark-stats"></div></div>
+  <div id="ark-labels"></div>
+  <div id="ark-hint" class="panel"></div>
+  <div id="ark-prompt" class="hidden"></div>
+</div>
+
 <div class="screen" id="menu">
   <div class="card">
     <h1>DEEPBACK</h1>
@@ -198,6 +218,8 @@
       <kbd>Space</kbd><span>прыжок / всплыть · <b>C</b> — нырнуть</span>
       <kbd>E</kbd><span>подобрать / сдать груз у шлюза</span>
       <kbd>F</kbd><span>гарпун: отогнать пиявок и глубинников</span>
+      <kbd>G</kbd><span>бросить солевую бомбу (купить у Брана)</span>
+      <kbd>Q</kbd><span>ракетница, раз в день (купить у Брана)</span>
       <kbd>R</kbd><span>у шлюза: укрыться и закончить день</span>
       <kbd>Tab</kbd><span>навигатор: сменить цель пунктира</span>
       <kbd>M</kbd><span>скрыть / показать мини-карту</span>

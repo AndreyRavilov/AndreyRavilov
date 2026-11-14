@@ -1,7 +1,7 @@
 // Сквозные тесты: настоящий браузер, настоящая игра, ввод с клавиатуры.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { setup, openGame, startNewRun, waitFor, game, teleport, toHatch, pickUp, clickModalButton } from './helpers.js';
+import { setup, openGame, startNewRun, waitFor, game, teleport, toHatch, pickUp, clickModalButton, goToStation, sleepThroughNight } from './helpers.js';
 
 let env;
 before(async () => { env = await setup(); });
@@ -90,18 +90,25 @@ test('реликвия: сдача открывает запись, журнал
   await clickModalButton(page, 'Закрыть');
 });
 
-test('укрыться (R): ночь, мастерская, покупка улучшения, второй день', async (t) => {
+test('укрыться (R): ночь, Ковчег, мастерская Тагира, второй день', async (t) => {
   const page = await openGame(env); t.after(() => page.context().close().catch(() => {}));
   await startNewRun(page);
   await game(page, () => { window.__deepback.S.scrap = 5; });
   await toHatch(page);
   await page.keyboard.press('KeyR');
   await page.locator('#modal-title', { hasText: 'Ночь 1' }).waitFor();
-  assert.match(await page.textContent('#modal-body'), /Мастерская Ковчега/);
+  await clickModalButton(page, 'Войти в Ковчег');
+  await waitFor(page, () => window.__deepback.S.mode === 'ark');
+  assert.ok(await page.isVisible('#arkhud'));
+  await goToStation(page, 'workshop');
+  await page.locator('#modal-title', { hasText: 'Мастерская' }).waitFor();
   await page.locator('.up', { hasText: 'Большой короб' }).locator('button').click();
   const s = await game(page, () => ({ scrap: window.__deepback.S.scrap, pack: window.__deepback.S.up.pack }));
   assert.deepEqual(s, { scrap: 2, pack: 1 });
-  await clickModalButton(page, 'Встретить утро');
+  await clickModalButton(page, 'Отойти');
+  await goToStation(page, 'bed');
+  await page.locator('#modal-title', { hasText: 'Лечь спать?' }).waitFor();
+  await clickModalButton(page, 'Лечь без записи');
   await waitFor(page, () => window.__deepback.S.mode === 'day' && window.__deepback.S.cycle === 2);
   assert.equal(await game(page, () => window.__deepback.player.capacity), 11);
   assert.equal(await game(page, () => window.__deepback.deeplings.filter((d) => d.active).length), 1);
@@ -228,7 +235,7 @@ test('сохранение: после перезагрузки можно пр�
   await startNewRun(page);
   await toHatch(page);
   await page.keyboard.press('KeyR');
-  await clickModalButton(page, 'Встретить утро');
+  await sleepThroughNight(page, { save: true });
   await waitFor(page, () => window.__deepback.S.cycle === 2 && window.__deepback.S.mode === 'day');
   await page.reload();
   await page.waitForFunction(() => window.__deepback);
@@ -346,7 +353,7 @@ test('ролик можно пропустить пробелом и перес�
   await waitFor(page, () => window.__deepback.S.mode === 'day');
   await toHatch(page);
   await page.keyboard.press('KeyR');
-  await clickModalButton(page, 'Встретить утро');
+  await sleepThroughNight(page, { save: true });
   await waitFor(page, () => window.__deepback.S.cycle === 2 && window.__deepback.S.mode === 'day');
   await page.reload();
   await page.waitForFunction(() => window.__deepback);
@@ -464,5 +471,76 @@ test('ролик: показывает, что собирать и куда не
     assert.ok(views.length >= 2);
     for (const [k, clear] of views) assert.ok(clear, `ракурс ${k}: цель закрыта постройкой`);
   }
+  assert.deepEqual(page.errors, []);
+});
+
+test('ночь в Ковчеге: живые жители на местах, погибших нет, Агата знает погоду на завтра', async (t) => {
+  const page = await openGame(env); t.after(() => page.context().close().catch(() => {}));
+  await startNewRun(page);
+  await game(page, () => { const d = window.__deepback; d.S.alive = d.S.alive.filter((id) => id !== 'mira'); d.S.food = 20; d.S.fuel = 20; d.endDay('safe'); });
+  await clickModalButton(page, 'Войти в Ковчег');
+  await waitFor(page, () => window.__deepback.S.mode === 'ark');
+  const ids = await game(page, () => window.__deepback.ark.npcs.map((n) => n.id));
+  assert.ok(!ids.includes('mira'), 'погибшая Мира не должна стоять в Ковчеге');
+  for (const id of ['tagir', 'bran', 'osk', 'agata']) assert.ok(ids.includes(id), `нет ${id}`);
+  assert.ok(await game(page, () => window.__deepback.ark.sleepers) > 0, 'безымянные жители спят в гамаках');
+  await goToStation(page, 'agata');
+  await page.locator('#modal-body', { hasText: 'завтра' }).waitFor();
+  await clickModalButton(page, 'Отойти');
+  // без записи в летопись игра переспрашивает перед сном
+  await goToStation(page, 'bed');
+  await page.locator('#modal-title', { hasText: 'Лечь спать?' }).waitFor();
+  await clickModalButton(page, 'Вернуться');
+  await waitFor(page, () => window.__deepback.S.mode === 'ark' && !window.__deepback.S.paused);
+  assert.deepEqual(page.errors, []);
+});
+
+test('оружейная Брана: острога, солевые бомбы и ракетница против пиявок', async (t) => {
+  const page = await openGame(env); t.after(() => page.context().close().catch(() => {}));
+  await startNewRun(page);
+  await game(page, () => { const d = window.__deepback; d.S.cycle = 3; d.S.scrap = 20; d.S.food = 20; d.S.fuel = 20; d.endDay('safe'); });
+  await clickModalButton(page, 'Войти в Ковчег');
+  await waitFor(page, () => window.__deepback.S.mode === 'ark');
+  await goToStation(page, 'armory');
+  await page.locator('#modal-title', { hasText: 'Оружейная' }).waitFor();
+  for (const name of ['Костяная острога', 'Солевые бомбы', 'Ракетница']) {
+    await page.locator('.up', { hasText: name }).locator('button').click();
+  }
+  const arms = await game(page, () => ({ ...window.__deepback.S.arms, scrap: window.__deepback.S.scrap }));
+  assert.deepEqual(arms, { spear: true, bombs: 3, flare: true, flareReady: true, scrap: 20 - 4 - 2 - 5 });
+  await clickModalButton(page, 'Отойти');
+  await goToStation(page, 'bed');
+  await clickModalButton(page, 'Лечь без записи');
+  await waitFor(page, () => window.__deepback.S.mode === 'day' && window.__deepback.S.cycle === 4);
+  await waitFor(page, () => /острога.*соль ×3.*ракетница/s.test(document.getElementById('weapons').textContent));
+
+  // бомба: пиявка прямо перед ныряльщиком
+  const aim = async (i, dist) => game(page, ({ i, dist }) => {
+    const d = window.__deepback;
+    const l = d.city.leeches[i];
+    l.cool = 30; // пока не кусает
+    d.setYaw(0);
+    d.player.pos.set(l.x, d.city.groundAt(l.x, l.z + dist) + 0.05, l.z + dist);
+    d.player.vel.set(0, 0, 0);
+  }, { i, dist });
+  await aim(0, 6);
+  await page.keyboard.press('KeyG');
+  await waitFor(page, () => window.__deepback.city.leeches[0].dead);
+  assert.equal(await game(page, () => window.__deepback.S.arms.bombs), 2);
+  // острога: удар вплотную убивает
+  await aim(1, 2);
+  await page.keyboard.press('KeyF');
+  await waitFor(page, () => window.__deepback.city.leeches[1].dead);
+  // ракетница: раз в день, пиявки вокруг засыпают
+  await game(page, () => {
+    const d = window.__deepback;
+    const l = d.city.leeches.find((x) => !x.dead);
+    l.cool = 0;
+    l.x = d.player.pos.x + 8;
+    l.z = d.player.pos.z;
+  });
+  await page.keyboard.press('KeyQ');
+  await waitFor(page, () => !window.__deepback.S.arms.flareReady);
+  assert.ok(await game(page, () => window.__deepback.city.leeches.filter((l) => !l.dead).some((l) => l.cool > 10)));
   assert.deepEqual(page.errors, []);
 });

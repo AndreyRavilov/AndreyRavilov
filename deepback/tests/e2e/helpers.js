@@ -91,3 +91,34 @@ export async function clickModalButton(page, text) {
   await btn.first().waitFor({ state: 'visible', timeout: 15000 });
   await btn.first().click();
 }
+
+// Ночь в Ковчеге: подойти к станции (по типу или к жителю по id) и нажать E
+export async function goToStation(page, kindOrWho) {
+  const st = await page.evaluate((k) => {
+    const s = window.__deepback.ark.stations.find((x) => x.kind === k || x.who === k);
+    return s && { x: s.x, z: s.z };
+  }, kindOrWho);
+  if (!st) throw new Error(`в Ковчеге нет: ${kindOrWho}`);
+  await page.evaluate(({ x, z }) => {
+    const d = window.__deepback;
+    const L = Math.hypot(x, z) || 1;
+    d.player.pos.set(x - (x / L) * 1.5, 0, z - (z / L) * 1.5);
+    d.player.vel.set(0, 0, 0);
+  }, st);
+  await waitFor(page, () => document.getElementById('ark-prompt').textContent.length > 0);
+  await page.keyboard.press('KeyE');
+}
+
+// После сводки ночи: войти в Ковчег, по желанию записать день, лечь спать
+export async function sleepThroughNight(page, { save = false } = {}) {
+  await clickModalButton(page, 'Войти в Ковчег');
+  await waitFor(page, () => window.__deepback.S.mode === 'ark');
+  if (save) {
+    await goToStation(page, 'chronicle');
+    await clickModalButton(page, 'Записать день');
+    await waitFor(page, () => window.__deepback.S.savedToday && !window.__deepback.S.paused);
+  }
+  await goToStation(page, 'bed');
+  if (!save) await clickModalButton(page, 'Лечь без записи');
+  await waitFor(page, () => window.__deepback.S.mode === 'day');
+}
