@@ -4,7 +4,8 @@ import { Ocean } from './ocean.js';
 import { City, HATCH, ITEM, MATERIALS } from './city.js';
 import { Player, CAPACITY } from './player.js';
 import { Audio } from './audio.js';
-import { INTRO, LORE, ENDINGS, NIGHT_LINES, PROLOGUE } from './lore.js';
+import { INTRO, LORE, ENDINGS, NIGHT_LINES } from './lore.js';
+import * as CUT from './cutscene.js';
 import * as NAV from './nav.js';
 import { Minimap, MAP_COLORS, LEGEND } from './minimap.js';
 import { Deepling } from './creatures.js';
@@ -348,7 +349,7 @@ function updateHud() {
 }
 
 // ============ Ход игры ============
-function startRun() {
+function startRun(withIntro = false) {
   S.cycle = 1;
   S.pop = ECO.START.pop;
   S.food = ECO.START.food;
@@ -358,7 +359,8 @@ function startRun() {
   S.up = {};
   S.alive = RESIDENTS.map((r) => r.id);
   S.runSeed = Math.floor(Math.random() * 1e9);
-  startDay();
+  if (withIntro) startIntro(startDay);
+  else startDay();
 }
 
 // ============ Сохранение ============
@@ -974,6 +976,171 @@ function updateNavigator(dt) {
   });
 }
 
+// ============ Вступительный ролик ============
+const intro = { t: 0, shot: -1, onDone: null, walk: 0, subs: [] };
+const introFake = { pos: new THREE.Vector3(), headUnder: true, swimming: false };
+const WALK = new Set(['KeyW']);
+const NONE = new Set();
+
+function startIntro(onDone) {
+  S.mode = 'intro';
+  S.paused = false;
+  intro.t = 0;
+  intro.shot = -1;
+  intro.onDone = onDone;
+  intro.subs = [];
+  // город — тот же, что будет в первый день
+  S.cycle = 1;
+  const drng = mulberry32(S.runSeed + 7919);
+  rollWeather(drng, 1);
+  const q = makeQuest(drng, S.alive, 1);
+  city.generate(S.runSeed + 1013, 1, S.lore, LORE.length, { keepsake: q?.kind === 'keepsake' });
+  navGrid = NAV.buildGrid((x, z) => backU(x, z) >= 0.97 || city.overlaps(x, z, 0.8));
+  S.weather = 'clear';
+  S.wind = null;
+  world.wind = null;
+  ocean.amp = 1;
+  S.t = 0;
+  S.T = ECO.dayLength(1);
+  S.navMode = 0;
+  S.navTimer = 0;
+  S.navPath = null;
+  S.blowTimer = 999;
+  S.blowing = 0;
+  deeplings.forEach((d) => d.setActive(false));
+  player.reset(new THREE.Vector3(HATCH.x, city.groundAt(HATCH.x, HATCH.z) + 0.05, HATCH.z));
+  player.mesh.visible = false;
+  navDots.count = 0;
+  $('hud').classList.add('hidden');
+  $('cine').classList.remove('hidden', 'titlecard');
+  $('cine-sub').textContent = '';
+  document.exitPointerLock?.();
+}
+
+function endIntro() {
+  if (S.mode !== 'intro') return;
+  $('cine').classList.add('hidden');
+  deeplings.forEach((d) => d.setActive(false));
+  player.mesh.visible = true;
+  navDots.count = 0;
+  S.mode = 'menu';
+  const done = intro.onDone;
+  intro.onDone = null;
+  done?.();
+}
+
+function introRelic() {
+  const r = city.pickups.find((p) => p.type === 'relic') || { x: BLOWHOLE.x, y: BLOWHOLE.y + 1, z: BLOWHOLE.z };
+  const len = Math.hypot(r.x, r.z) || 1;
+  return { x: r.x, y: r.y, z: r.z, ox: r.x / len, oz: r.z / len };
+}
+
+// Точка из сценария: готовые координаты или «ключ» (игрок, реликвия)
+function introPoint(spec) {
+  if (Array.isArray(spec)) return spec;
+  const p = player.pos;
+  const r = introRelic();
+  switch (spec) {
+    case 'player-back': return [p.x + 7, p.y + 3.5, p.z + 10];
+    case 'player-face': return [p.x + 1.1, p.y + 1.9, p.z + 3.1];
+    case 'player-head': return [p.x, p.y + 1.55, p.z];
+    case 'relic-far': return [r.x + r.ox * 14, r.y + 6, r.z + r.oz * 14];
+    case 'relic-near': return [r.x + r.ox * 4 + r.oz * 1.5, r.y + 1.4, r.z + r.oz * 4 - r.ox * 1.5];
+    case 'relic': return [r.x, r.y, r.z];
+    default: return [0, 0, 0];
+  }
+}
+
+function introEvent(name) {
+  switch (name) {
+    case 'moan': audio.moan(1.3); break;
+    case 'horn': audio.horn(); break;
+    case 'blow': S.blowTimer = 0; break;
+    case 'deepling': {
+      const D = deeplings[0];
+      D.setActive(true, 32);
+      D.pos.set(-34, 12, 40);
+      D.segPos.forEach((sp, i) => sp.set(-34 - i, 12, 40 + i));
+      break;
+    }
+    case 'growl': audio.tone({ type: 'sawtooth', f0: 75, f1: 38, dur: 1.6, vol: 0.22, attack: 0.3, lp: 500 }); break;
+    case 'hatch': audio.tone({ type: 'square', f0: 60, f1: 40, dur: 0.8, vol: 0.12, lp: 300 }); break;
+    case 'chime': audio.pickup('relic'); break;
+    default: break;
+  }
+}
+
+function onIntroShot(shot) {
+  const sub = $('cine-sub');
+  sub.classList.remove('show');
+  void sub.offsetWidth; // перезапуск анимации появления
+  sub.textContent = shot.sub;
+  sub.style.animationDuration = `${shot.dur / (S.introSpeed || 1)}s`;
+  if (shot.sub) {
+    sub.classList.add('show');
+    intro.subs.push(shot.sub);
+  }
+  $('cine').classList.toggle('titlecard', !!shot.title);
+  if (shot.id === 'you') {
+    player.reset(new THREE.Vector3(HATCH.x, city.groundAt(HATCH.x, 10.6) + 0.05, 10.6));
+    player.facing = Math.PI;
+    player.mesh.rotation.y = Math.PI;
+    player.mesh.visible = true;
+    intro.walk = 2.6;
+  }
+  if (shot.id === 'task') S.navTimer = 0;
+  if (shot.id !== 'night') deeplings[0].setActive(false);
+}
+
+function updateIntro(dt) {
+  if (pressed.has('Space') || pressed.has('Escape') || pressed.has('Enter')) {
+    endIntro();
+    return;
+  }
+  const t0 = intro.t;
+  intro.t += dt * (S.introSpeed || 1);
+  const st = CUT.shotAt(intro.t);
+  if (st.index !== intro.shot) {
+    intro.shot = st.index;
+    onIntroShot(st.shot);
+  }
+  for (const e of CUT.eventsBetween(t0, intro.t)) introEvent(e.name);
+  if (st.done) {
+    endIntro();
+    return;
+  }
+  const s = st.shot;
+  const k = CUT.ease(st.k);
+  const sdt = dt * (S.introSpeed || 1);
+
+  if (s.id === 'you') {
+    player.update(sdt, intro.walk > 0 ? WALK : NONE, Math.PI, world);
+    intro.walk -= sdt;
+  }
+  camera.position.fromArray(CUT.lerp3(introPoint(s.cam[0]), introPoint(s.cam[1]), k));
+  camera.lookAt(...CUT.lerp3(introPoint(s.look[0]), introPoint(s.look[1]), k));
+
+  const water = CUT.lerp(s.water[0], s.water[1], s.id === 'dive' ? Math.pow(st.k, 1.5) : k);
+  const p = CUT.lerp(s.time[0], s.time[1], st.k);
+  ocean.update(S.time, water, camera.position.x, camera.position.z);
+  applyTime(p);
+  city.beaconLight.intensity = 40 + p * 160;
+  city.hatchRing.material.opacity = 0.35 + Math.sin(S.time * 4) * 0.2;
+  for (const pk of city.pickups) {
+    pk.mesh.rotation.y += sdt * 1.2;
+    pk.mesh.position.y = pk.y + Math.sin(S.time * 2 + pk.phase) * 0.2;
+  }
+  updateBlowhole(sdt, p);
+  if (s.id === 'night') {
+    // глубинник проплывает мимо светящегося Ковчега
+    introFake.pos.set(CUT.lerp(-24, 34, st.k), 11 + Math.sin(st.k * 6) * 2, CUT.lerp(34, 14, st.k));
+    deeplings[0].update(sdt, introFake, ocean, true, 2.5);
+  }
+  if (s.id === 'task') updateNavigator(sdt);
+  else navDots.count = 0;
+  cameraEnv(s.id === 'night' ? 1 : p);
+}
+
 const HARPOON_CD = [1.6, 1.1, 0.7];
 function updateHarpoon(dt) {
   S.harpoonCd -= dt;
@@ -1082,6 +1249,11 @@ function updateCamera(dt) {
   if (cy < bh + 0.6) cy = bh + 0.6;
   camera.position.set(px, cy, pz);
   camera.lookAt(camTarget);
+  cameraEnv(Math.min(1, S.t / S.T));
+}
+
+// Небо, солнце, туман и «подводность» вокруг текущей камеры
+function cameraEnv(dark) {
   sky.position.copy(camera.position);
   stars.position.copy(camera.position);
   sun.position.set(player.pos.x + 60, player.pos.y + 90, player.pos.z + 40);
@@ -1090,7 +1262,7 @@ function updateCamera(dt) {
   // под водой
   const under = camera.position.y < ocean.surfaceAt(camera.position.x, camera.position.z);
   if (under) {
-    scene.fog.color.set(0x0b3340).lerp(new THREE.Color(0x02080c), Math.min(1, S.t / S.T));
+    scene.fog.color.set(0x0b3340).lerp(new THREE.Color(0x02080c), dark);
     scene.fog.near = 1;
     scene.fog.far = 55;
   } else {
@@ -1099,7 +1271,7 @@ function updateCamera(dt) {
     scene.fog.far = S.weather === 'fog' && S.mode !== 'menu' ? 55 : S.weather === 'storm' && S.mode !== 'menu' ? 260 : 700;
   }
   document.body.classList.toggle('underwater', under);
-  rain.visible = S.weather === 'storm' && !under && S.mode !== 'menu' && S.mode !== 'night';
+  rain.visible = S.weather === 'storm' && !under && (S.mode === 'day' || S.mode === 'closing');
   audio.setUnderwater(under);
 }
 
@@ -1110,26 +1282,19 @@ function leaveMenu() {
   audio.resume();
   $('menu').classList.add('hidden');
 }
-// Предыстория: слайды поверх вращающейся панорамы города
-function showPrologue(onDone) {
-  const slide = (i) => {
-    const last = i === PROLOGUE.length - 1;
-    const buttons = [{ label: last ? 'Выйти из шлюза' : 'Дальше', onClick: () => (last ? onDone() : slide(i + 1)) }];
-    if (!last) buttons.push({ label: 'Пропустить', onClick: onDone });
-    showModal({ title: `${PROLOGUE[i].title}`, body: PROLOGUE[i].text, buttons });
-    $('modal').querySelector('.card').dataset.step = `${i + 1} / ${PROLOGUE.length}`;
-    $('modal-buttons').lastChild.classList.toggle('secondary', !last);
-  };
-  slide(0);
-}
 $('start').addEventListener('click', () => {
   leaveMenu();
-  showPrologue(startRun);
+  startRun(true);
 });
 $('prologue-btn').addEventListener('click', () => {
-  $('menu').classList.add('hidden');
-  showPrologue(() => $('menu').classList.remove('hidden'));
+  leaveMenu();
+  if (!S.alive.length) S.alive = RESIDENTS.map((r) => r.id);
+  startIntro(() => {
+    S.mode = 'menu';
+    $('menu').classList.remove('hidden');
+  });
 });
+$('skip').addEventListener('click', () => endIntro());
 
 // мини-карта и её легенда
 const minimap = new Minimap($('minimap'));
@@ -1160,7 +1325,7 @@ if (saved && saved.pop > 0) {
 
 
 // для фона меню и для автотестов
-window.__deepback = { S, player, city, ocean, deeplings, rain, navDots, startRun, startDay, endDay, keys, pressed, setYaw: (v) => (yaw = v) };
+window.__deepback = { S, intro, startIntro, endIntro, player, city, ocean, deeplings, rain, navDots, startRun, startDay, endDay, keys, pressed, setYaw: (v) => (yaw = v) };
 
 // ============ Цикл ============
 const clock = new THREE.Clock();
@@ -1177,6 +1342,8 @@ function frame() {
     updateCamera(dt);
     camera.position.lerp(new THREE.Vector3(Math.sin(yaw) * 140, 55, Math.cos(yaw) * 140), 1);
     camera.lookAt(0, 6, 0);
+  } else if (S.mode === 'intro') {
+    updateIntro(dt);
   } else if ((S.mode === 'day' || S.mode === 'closing') && !S.paused) {
     if (pressed.has('KeyJ')) showJournal();
     else updateGame(dt);

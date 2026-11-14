@@ -79,6 +79,20 @@
 
   .screen { position: fixed; inset: 0; display: grid; place-items: center; padding: 16px; background: radial-gradient(ellipse at center, rgba(4,14,20,.55), rgba(2,6,10,.92)); overflow-y: auto; }
   .card { width: min(640px, 100%); background: rgba(8, 20, 26, 0.85); border: 1px solid var(--line); border-radius: 18px; padding: 28px 30px; box-shadow: 0 30px 80px rgba(0,0,0,.5); }
+  #cine { position: fixed; inset: 0; pointer-events: none; z-index: 6; }
+  #cine .bar { position: absolute; left: 0; right: 0; height: 11vh; background: #000; transition: height .6s; }
+  #cine .bar.top { top: 0; }
+  #cine .bar.bottom { bottom: 0; }
+  #cine-sub { position: absolute; left: 50%; bottom: calc(11vh + 26px); transform: translateX(-50%); width: min(900px, 86vw); margin: 0; text-align: center; font-size: clamp(18px, 2.1vw, 26px); line-height: 1.45; color: #f2fbfa; text-shadow: 0 2px 12px rgba(0,0,0,.9), 0 0 2px #000; opacity: 0; }
+  #cine-sub.show { animation: subIn 7s ease forwards; }
+  @keyframes subIn { 0% { opacity: 0; transform: translate(-50%, 8px); } 8% { opacity: 1; transform: translate(-50%, 0); } 88% { opacity: 1; } 100% { opacity: .0; } }
+  #cine-title { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; opacity: 0; transition: opacity 1.2s; }
+  #cine-title h1 { font-family: 'Cormorant Garamond', serif; font-size: clamp(64px, 12vw, 150px); letter-spacing: .08em; margin: 0; color: #f2fbfa; text-shadow: 0 0 60px rgba(88,240,216,.35), 0 4px 30px rgba(0,0,0,.8); }
+  #cine-title p { margin: 8px 0 0; letter-spacing: .4em; text-transform: uppercase; font-size: 14px; color: var(--accent); }
+  #cine.titlecard #cine-title { opacity: 1; }
+  #skip { position: absolute; right: 24px; bottom: calc(11vh + 20px); pointer-events: auto; background: rgba(0,0,0,.45); color: var(--muted); border: 1px solid var(--line); font-size: 13px; padding: 8px 14px; }
+  #skip kbd { font-family: inherit; border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; margin-left: 6px; }
+  @media (prefers-reduced-motion: reduce) { #cine-sub.show { animation: none; opacity: 1; } }
   .card[data-step]::before { content: attr(data-step); display: block; font-size: 11px; letter-spacing: .2em; color: var(--muted); margin-bottom: 8px; }
   .card.wide { width: min(820px, 100%); }
   .card h1 { font-family: 'Cormorant Garamond', serif; font-size: clamp(44px, 11vw, 88px); letter-spacing: .06em; margin: 0; line-height: .95; color: #f2fbfa; text-shadow: 0 0 40px rgba(88,240,216,.25); }
@@ -157,6 +171,14 @@
   </div>
 </div>
 
+<div id="cine" class="hidden">
+  <div class="bar top"></div>
+  <div class="bar bottom"></div>
+  <p id="cine-sub"></p>
+  <div id="cine-title"><h1>DEEPBACK</h1><p>Шлюз открывается.</p></div>
+  <button id="skip">Пропустить <kbd>Space</kbd></button>
+</div>
+
 <div class="screen" id="menu">
   <div class="card">
     <h1>DEEPBACK</h1>
@@ -176,7 +198,7 @@
     <div class="menu-btns">
       <button id="continue" class="hidden">ПРОДОЛЖИТЬ</button>
       <button id="start">НАЧАТЬ ПЕРВЫЙ ДЕНЬ</button>
-      <button id="prologue-btn" class="secondary">ПРЕДЫСТОРИЯ</button>
+      <button id="prologue-btn" class="secondary">СМОТРЕТЬ ЗАСТАВКУ</button>
     </div>
     <p class="desktop-note">Версия 1.0 · для компьютера с клавиатурой и мышью.</p>
   </div>
