@@ -307,13 +307,19 @@ test('мини-карта нарисована, у неё есть легенд�
   const legend = await page.textContent('#legend');
   for (const word of ['Ты', 'Ковчег', 'Рыба', 'Ворвань', 'Обломки', 'Реликвия', 'Пиявка', 'Глубинник']) assert.match(legend, new RegExp(word));
   // на холсте есть и спина, и отметки припасов, и стрелка игрока
-  await waitFor(page, () => {
-    const c = document.getElementById('minimap');
-    const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
-    const seen = new Set();
-    for (let i = 0; i < d.length; i += 4) if (d[i + 3] > 200) seen.add(`${d[i] >> 5},${d[i + 1] >> 5},${d[i + 2] >> 5}`);
-    return seen.size >= 6;
-  });
+  // (waitForFunction здесь не подходит: в его опросе getImageData видит пустой холст)
+  let colors = 0;
+  for (let i = 0; i < 40 && colors < 6; i++) {
+    colors = await game(page, () => {
+      const c = document.getElementById('minimap');
+      const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+      const seen = new Set();
+      for (let i = 0; i < d.length; i += 4) if (d[i + 3] > 200) seen.add(`${d[i] >> 5},${d[i + 1] >> 5},${d[i + 2] >> 5}`);
+      return seen.size;
+    });
+    if (colors < 6) await page.waitForTimeout(250);
+  }
+  assert.ok(colors >= 6, `на мини-карте слишком мало цветов: ${colors}`);
   await page.keyboard.press('KeyM');
   await waitFor(page, () => getComputedStyle(document.getElementById('map')).display === 'none');
   await page.keyboard.press('KeyM');
@@ -350,9 +356,13 @@ test('навигатор: пунктир ведёт к цели, Tab меняе�
   await page.keyboard.press('Tab');
   await waitFor(page, () => document.getElementById('nav-target').textContent === 'Ковчег');
   // ... и дальше по кругу до «Выключен»: пунктир исчезает
-  for (let i = 0; i < 6; i++) await page.keyboard.press('Tab');
+  for (let mode = 2; mode <= 7; mode++) {
+    await page.keyboard.press('Tab');
+    await waitFor(page, (m) => window.__deepback.S.navMode === m, mode);
+  }
   await waitFor(page, () => document.getElementById('nav-target').textContent === 'Выключен' && window.__deepback.navDots.count === 0);
   await page.keyboard.press('Tab'); // снова «Авто»
+  await waitFor(page, () => window.__deepback.S.navMode === 0);
   // вечером авто-режим ведёт домой
   await game(page, () => { const d = window.__deepback; d.S.t = d.S.T * 0.8; });
   await waitFor(page, () => /Авто → Ковчег/.test(document.getElementById('nav-target').textContent));
