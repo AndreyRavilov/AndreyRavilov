@@ -7,6 +7,9 @@ import { Audio } from './audio.js';
 import { INTRO, LORE, ENDINGS, NIGHT_LINES } from './lore.js';
 import { Deepling } from './creatures.js';
 import { UPGRADES, upgradeCost } from './upgrades.js';
+import { RESIDENTS, ICON, makeQuest, WEATHER, rollWeather } from './residents.js';
+import { mulberry32 } from './city.js';
+import * as ECO from './economy.js';
 
 // ============ Рендер и сцена ============
 const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: false });
@@ -94,6 +97,23 @@ function resetBlowParticle(i) {
 }
 for (let i = 0; i < BLOW_N; i++) resetBlowParticle(i);
 
+// дождь для шторма
+const RAIN_N = 2500;
+const rainGeo = new THREE.BufferGeometry();
+const rainPos = new Float32Array(RAIN_N * 6); // каждая капля — короткая черта
+function resetDrop(i, top) {
+  const x = (Math.random() - 0.5) * 80;
+  const y = top ? 30 + Math.random() * 10 : Math.random() * 40;
+  const z = (Math.random() - 0.5) * 80;
+  rainPos.set([x, y, z, x, y - 0.7, z], i * 6);
+}
+for (let i = 0; i < RAIN_N; i++) resetDrop(i, false);
+rainGeo.setAttribute('position', new THREE.BufferAttribute(rainPos, 3));
+const rain = new THREE.LineSegments(rainGeo, new THREE.LineBasicMaterial({ color: 0xaac4d0, transparent: true, opacity: 0.45, depthWrite: false }));
+rain.frustumCulled = false;
+rain.visible = false;
+scene.add(rain);
+
 // ============ Палитры времени суток ============
 const PAL = {
   day: { top: 0x4a90b8, hor: 0xd4e6ea, fog: 0xa9c8d0, sun: 0xfff0d8, sunI: 2.4, hemi: 0.95, water: 0x1d6275 },
@@ -125,8 +145,8 @@ function applyTime(p) {
 }
 
 // ============ Состояние игры ============
-const W0 = 2.5;
-const W1 = WHALE.H + 4;
+const W0 = ECO.WATER_START;
+const W1 = ECO.WATER_END;
 const S = {
   mode: 'menu',
   paused: false,
@@ -139,6 +159,12 @@ const S = {
   lore: 0,
   scrap: 0,
   up: {},
+  alive: [],
+  quest: null,
+  weather: 'clear',
+  wind: null,
+  flash: 0,
+  thunderTimer: 8,
   harpoonCd: 0,
   runSeed: Math.floor(Math.random() * 1e9),
   closing: 0,
@@ -150,11 +176,12 @@ const S = {
   stats: null,
   time: 0,
 };
-const dayLength = (c) => Math.max(100, 170 - (c - 1) * 10);
-const needFood = () => Math.max(1, Math.ceil(S.pop / 4) + 1 - (S.up.still || 0));
-const needFuel = () => Math.min(4, 1 + Math.floor(S.cycle / 2));
+const needFood = () => ECO.needFood(S.pop, S.up.still || 0);
+const needFuel = () => ECO.needFuel(S.cycle);
+const plural = ECO.plural;
 
 // ============ Ввод ============
+const isTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
 const keys = new Set();
 const pressed = new Set();
 let yaw = 0;
@@ -176,8 +203,9 @@ canvas.addEventListener('mousedown', (e) => {
 addEventListener('mouseup', () => (dragging = false));
 addEventListener('mousemove', (e) => {
   if (document.pointerLockElement === canvas || dragging) {
-    yaw -= e.movementX * 0.0026;
-    pitch = Math.max(-0.45, Math.min(1.25, pitch + e.movementY * 0.0026));
+    const k = 0.0026 * settings.sens;
+    yaw -= e.movementX * k;
+    pitch = Math.max(-0.45, Math.min(1.25, pitch + e.movementY * k * (settings.invert ? -1 : 1)));
   }
 });
 let hadLock = false;
@@ -231,11 +259,49 @@ function showModal({ title, body, buttons, wide = false }) {
 function setPause(on) {
   S.paused = on;
   $('pause').classList.toggle('hidden', !on);
+  if (on) document.exitPointerLock?.();
 }
-$('pause').addEventListener('click', () => {
+$('resume').addEventListener('click', () => {
   setPause(false);
   canvas.requestPointerLock?.();
 });
+$('journal-btn').addEventListener('click', () => {
+  $('pause').classList.add('hidden');
+  showJournal();
+});
+$('to-menu').addEventListener('click', () => {
+  setPause(false);
+  S.mode = 'menu';
+  $('hud').classList.add('hidden');
+  $('touch').classList.add('hidden');
+  location.reload(); // сохранение уже записано утром — меню предложит продолжить
+});
+$('pausebtn').addEventListener('click', () => {
+  if (S.mode === 'day' || S.mode === 'closing') setPause(true);
+});
+addEventListener('keydown', (e) => {
+  if ((e.code === 'Escape' || e.code === 'KeyP') && (S.mode === 'day' || S.mode === 'closing') && $('modal').classList.contains('hidden')) {
+    setPause(e.code === 'Escape' ? true : !S.paused);
+  }
+});
+
+// ============ Настройки ============
+const SETTINGS_KEY = 'deepback-settings-v1';
+const settings = { volume: 0.7, sens: 1, invert: false };
+try { Object.assign(settings, JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}')); } catch (e) { /* без сохранения */ }
+function applySettings() {
+  audio.setVolume(settings.volume);
+  $('set-volume').value = Math.round(settings.volume * 100);
+  $('vol-out').textContent = Math.round(settings.volume * 100);
+  $('set-sens').value = settings.sens;
+  $('sens-out').textContent = Number(settings.sens).toFixed(1);
+  $('set-invert').checked = settings.invert;
+  try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch (e) { /* ignore */ }
+}
+$('set-volume').addEventListener('input', (e) => { settings.volume = e.target.value / 100; applySettings(); });
+$('set-sens').addEventListener('input', (e) => { settings.sens = Number(e.target.value); applySettings(); });
+$('set-invert').addEventListener('change', (e) => { settings.invert = e.target.checked; applySettings(); });
+applySettings();
 
 function updateHud() {
   $('cycle').textContent = S.cycle;
@@ -263,24 +329,40 @@ function updateHud() {
   $('arrow').style.transform = `rotate(${ang}rad)`;
   $('dist').textContent = Math.round(Math.hypot(dx, dz)) + ' м';
   $('hud').classList.toggle('alarm', p > 0.85 && S.mode === 'day');
+  if (isTouch) {
+    // кнопка паузы и компас — сразу под верхними панелями, какой бы высоты они ни были
+    const top = $('topbar').getBoundingClientRect().bottom - $('hud').getBoundingClientRect().top + 8;
+    $('hud').style.setProperty('--below-top', `${top}px`);
+  }
+  const W = WEATHER[S.weather];
+  $('weather').textContent = `${W.icon} ${W.name}`;
+  const q = S.quest;
+  if (q) {
+    const r = resident(q.who);
+    const prog = q.kind === 'fetch' ? `${ICON[q.item]} ${Math.min(q.have, q.need)}/${q.need}` : (q.have ? 'вещь найдена' : '🎁 найти вещь');
+    $('quest').textContent = q.done ? `✓ ${r.name}: просьба выполнена` : `${r.name}: ${prog}`;
+    $('quest').classList.toggle('done', q.done);
+  }
+  $('quest').classList.toggle('hidden', !q);
 }
 
 // ============ Ход игры ============
 function startRun() {
   S.cycle = 1;
-  S.pop = 12;
-  S.food = 3;
-  S.fuel = 2;
+  S.pop = ECO.START.pop;
+  S.food = ECO.START.food;
+  S.fuel = ECO.START.fuel;
   S.lore = 0;
   S.scrap = 0;
   S.up = {};
+  S.alive = RESIDENTS.map((r) => r.id);
   S.runSeed = Math.floor(Math.random() * 1e9);
   startDay();
 }
 
 // ============ Сохранение ============
 const SAVE_KEY = 'deepback-save-v1';
-const SAVE_FIELDS = ['cycle', 'pop', 'food', 'fuel', 'lore', 'scrap', 'up', 'runSeed'];
+const SAVE_FIELDS = ['cycle', 'pop', 'food', 'fuel', 'lore', 'scrap', 'up', 'alive', 'runSeed'];
 function saveGame() {
   try {
     const data = {};
@@ -311,7 +393,6 @@ function applyUpgrades() {
 
 function startDay() {
   S.t = 0;
-  S.T = dayLength(S.cycle);
   S.closing = 0;
   S.blowTimer = 10 + Math.random() * 6;
   S.blowing = 0;
@@ -321,7 +402,17 @@ function startDay() {
   S.harpoonCd = 0;
   applyUpgrades();
   saveGame();
-  city.generate(S.runSeed + S.cycle * 1013, S.cycle, S.lore, LORE.length);
+  const drng = mulberry32(S.runSeed + S.cycle * 7919);
+  S.weather = rollWeather(drng, S.cycle);
+  S.quest = makeQuest(drng, S.alive, S.cycle);
+  S.T = ECO.dayLength(S.cycle, S.weather);
+  ocean.amp = S.weather === 'storm' ? 2.4 : S.weather === 'calm' ? 0.45 : 1;
+  const wa = drng() * Math.PI * 2;
+  S.wind = S.weather === 'storm' ? { x: Math.cos(wa) * 2.6, z: Math.sin(wa) * 2.6 } : null;
+  world.wind = S.wind;
+  rain.visible = S.weather === 'storm';
+  S.thunderTimer = 5;
+  city.generate(S.runSeed + S.cycle * 1013, S.cycle, S.lore, LORE.length, { keepsake: S.quest?.kind === 'keepsake' });
   const sp = new THREE.Vector3(HATCH.x, 0, HATCH.z + 6);
   sp.y = city.groundAt(sp.x, sp.z) + 0.1;
   player.reset(sp);
@@ -336,6 +427,9 @@ function startDay() {
   if (S.cycle === 2) toast('На спине завелись пиявки, а под водой кто-то светится. F — гарпун!', 'warn');
   if (S.cycle === 4) toast('Глубинников стало двое.', 'danger');
   if (S.lore < LORE.length) toast('Где-то на опасном краю светится реликвия.', 'relic');
+  const W = WEATHER[S.weather];
+  if (S.cycle > 1) toast(`${W.icon} ${W.name}. ${W.note}`, S.weather === 'storm' ? 'danger' : '');
+  if (S.quest) toast(S.quest.text, 'quest');
   canvas.requestPointerLock?.();
 }
 
@@ -349,16 +443,58 @@ function deposit() {
     if (t === 'food') { S.food++; S.stats.food++; }
     else if (t === 'fuel') { S.fuel++; S.stats.fuel++; }
     else if (t === 'scrap') { S.scrap++; S.stats.scrap++; }
+    else if (t === 'keepsake' && S.quest?.kind === 'keepsake') S.quest.have = 1;
+    if (S.quest?.kind === 'fetch' && S.quest.item === t) S.quest.have++;
     else if (t === 'relic') { relics.push(S.lore); S.lore++; S.stats.relics.push(S.lore - 1); }
   }
   player.carried = [];
   player.refreshPack();
   audio.deposit();
   toast('Груз сдан в Ковчег.', 'ok');
+  checkQuest();
   for (const i of relics) {
     S.paused = true;
     showModal({ title: LORE[i].title, body: LORE[i].text, buttons: [{ label: 'Спрятать в журнал', onClick: () => { S.paused = false; canvas.requestPointerLock?.(); } }] });
   }
+}
+
+function resident(id) {
+  return RESIDENTS.find((r) => r.id === id);
+}
+
+function checkQuest() {
+  const q = S.quest;
+  if (!q || q.done) return;
+  const ok = q.kind === 'fetch' ? q.have >= q.need : q.have >= 1;
+  if (!ok) return;
+  q.done = true;
+  S.scrap += q.reward;
+  const r = resident(q.who);
+  if (!S.alive.includes(q.who)) return;
+  if (q.kind === 'keepsake') {
+    S.paused = true;
+    showModal({
+      title: `${r.name} · ${r.role}`,
+      body: `Ты вернул ${r.keepsake}.\n\n${r.story}\n\nВ благодарность: ⚙️ ${q.reward}.`,
+      buttons: [{ label: 'Вернуться к работе', onClick: () => { S.paused = false; canvas.requestPointerLock?.(); } }],
+    });
+  } else {
+    toast(`${r.name} благодарит тебя: +⚙️ ${q.reward}`, 'quest');
+  }
+}
+
+// Часть погибших — жители с именами
+function killResidents(n) {
+  const names = [];
+  for (let i = 0; i < n; i++) {
+    const popBefore = S.pop - i;
+    if (S.alive.length && Math.random() < S.alive.length / Math.max(1, popBefore)) {
+      const idx = Math.floor(Math.random() * S.alive.length);
+      names.push(resident(S.alive[idx]).name);
+      S.alive.splice(idx, 1);
+    }
+  }
+  return names;
 }
 
 function endDay(outcome) {
@@ -373,26 +509,26 @@ function endDay(outcome) {
     const lost = player.carried.length;
     player.carried = [];
     player.refreshPack();
+    const lostNames = killResidents(1);
     S.pop = Math.max(0, S.pop - 1);
+    if (lostNames.length) lines.push(`${lostNames[0]} ушёл искать тебя в воду и не вернулся.`);
     lines.push(`Ты не успел к шлюзу. Утром тебя нашли без сознания на палубе.${lost ? ` Груз (${lost}) унесло течением.` : ''} Один из жителей погиб, пока искал тебя.`);
   } else {
     lines.push('Шлюз закрылся за твоей спиной. Мать уходит на глубину.');
   }
-  const nf = needFood();
-  const nu = needFuel();
-  const eatF = Math.min(S.food, nf);
-  const burn = Math.min(S.fuel, nu);
-  const hunger = nf - eatF;
-  const cold = nu - burn;
-  S.food -= eatF;
-  S.fuel -= burn;
-  const deaths = Math.min(S.pop, hunger + cold * 2);
-  S.pop -= deaths;
+  const night = ECO.resolveNight({ pop: S.pop, food: S.food, fuel: S.fuel, cycle: S.cycle, still: S.up.still || 0 });
+  const { nf, nu, eatF, burn, hunger, cold, deaths } = night;
+  const named = killResidents(deaths);
+  S.pop = night.pop;
+  S.food = night.food;
+  S.fuel = night.fuel;
   lines.push(`Принесено за день: 🐟 ${S.stats.food} · 🛢️ ${S.stats.fuel} · ⚙️ ${S.stats.scrap}${S.stats.relics.length ? ' · ◈ реликвия' : ''}.`);
   lines.push(`Ночью съедено 🐟 ${eatF}/${nf}, сожжено 🛢️ ${burn}/${nu}.`);
   if (hunger) lines.push(`Не хватило еды: ${hunger} ${plural(hunger, 'житель умер', 'жителя умерли', 'жителей умерли')} от голода.`);
   if (cold) lines.push(`Не хватило ворвани: в Ковчеге погас свет, ${cold * 2} ${plural(cold * 2, 'человек замёрз', 'человека замёрзли', 'человек замёрзли')}.`);
+  if (named.length) lines.push(`Среди погибших: ${named.join(', ')}.`);
   if (!hunger && !cold) lines.push('Все пережили эту ночь.');
+  if (S.quest && !S.quest.done && S.alive.includes(S.quest.who)) lines.push(`${resident(S.quest.who).name} так и не дождался помощи.`);
   lines.push(NIGHT_LINES[(S.cycle - 1) % NIGHT_LINES.length]);
   lines.push(`Осталось жителей: ${S.pop}. Запасы: 🐟 ${S.food} · 🛢️ ${S.fuel}. Реликвий: ${S.lore}/${LORE.length}.`);
 
@@ -493,12 +629,6 @@ function showEndingChoice() {
   });
 }
 
-function plural(n, one, few, many) {
-  const m10 = n % 10, m100 = n % 100;
-  if (m10 === 1 && m100 !== 11) return one;
-  if (m10 >= 2 && m10 <= 4 && (m100 < 10 || m100 >= 20)) return few;
-  return many;
-}
 
 function showJournal() {
   const body = document.createElement('div');
@@ -551,7 +681,7 @@ function updateGame(dt) {
     world.current = 6;
     player.oxygen -= dt / 14;
   }
-  const level = S.mode === 'day' ? W0 + (W1 - W0) * Math.pow(p, 2.1) : W1 + S.closing * 1.2;
+  const level = S.mode === 'day' ? ECO.waterLevel(p, S.weather) : W1 + S.closing * 1.2;
   ocean.update(S.time, level, player.pos.x, player.pos.z);
 
   player.update(dt, keys, yaw, world);
@@ -619,6 +749,7 @@ function updateGame(dt) {
 
   // свет
   applyTime(S.mode === 'day' ? p : 1);
+  updateWeather(dt);
   player.lamp.intensity = p > 0.55 || player.headUnder ? 45 : 0;
   city.hatchRing.material.opacity = 0.35 + Math.sin(S.time * 4) * 0.2 + (p > 0.75 ? 0.3 : 0);
   city.beaconLight.intensity = 40 + p * 160 + (p > 0.75 ? Math.sin(S.time * 8) * 60 : 0);
@@ -677,6 +808,47 @@ function updateLeeches(dt) {
         toast(`Пиявка сорвала с тебя: ${ITEM[t].name}!`, 'warn');
       } else toast('Пиявка! Держись от них подальше.', 'warn');
     }
+  }
+}
+
+const STORM_SKY = new THREE.Color(0x39444c);
+const STORM_FOG = new THREE.Color(0x4a5860);
+const FOG_COLOR = new THREE.Color(0x9fb2b8);
+function updateWeather(dt) {
+  if (S.weather === 'storm') {
+    skyMat.uniforms.top.value.lerp(STORM_SKY, 0.75);
+    skyMat.uniforms.horizon.value.lerp(STORM_FOG, 0.75);
+    fogDay.lerp(STORM_FOG, 0.7);
+    sun.intensity *= 0.35;
+    // дождь вокруг камеры
+    const wx = (S.wind?.x || 0) * dt * 2;
+    const wz = (S.wind?.z || 0) * dt * 2;
+    for (let i = 0; i < RAIN_N * 2; i++) {
+      rainPos[i * 3] += wx;
+      rainPos[i * 3 + 1] -= 32 * dt;
+      rainPos[i * 3 + 2] += wz;
+    }
+    for (let i = 0; i < RAIN_N; i++) if (rainPos[i * 6 + 4] < -10) resetDrop(i, true);
+    rainGeo.attributes.position.needsUpdate = true;
+    rain.position.set(camera.position.x, camera.position.y - 10, camera.position.z);
+    // молнии
+    S.thunderTimer -= dt;
+    if (S.thunderTimer <= 0) {
+      S.thunderTimer = 7 + Math.random() * 9;
+      S.flash = 0.25;
+      audio.thunder();
+    }
+  } else if (S.weather === 'fog') {
+    fogDay.lerp(FOG_COLOR, 0.6);
+    skyMat.uniforms.top.value.lerp(fogDay, 0.8);
+    skyMat.uniforms.horizon.value.copy(fogDay);
+  } else if (S.weather === 'calm') {
+    sun.intensity *= 1.1;
+  }
+  if (S.flash > 0) {
+    S.flash -= dt;
+    hemi.intensity += 3 * Math.max(0, S.flash) / 0.25;
+    skyMat.uniforms.horizon.value.lerp(new THREE.Color(0xdde8ff), Math.max(0, S.flash) * 2);
   }
 }
 
@@ -801,8 +973,8 @@ function updateCamera(dt) {
     scene.fog.far = 55;
   } else {
     scene.fog.color.copy(fogDay);
-    scene.fog.near = 90;
-    scene.fog.far = 700;
+    scene.fog.near = S.weather === 'fog' && S.mode !== 'menu' ? 2 : S.weather === 'storm' && S.mode !== 'menu' ? 30 : 90;
+    scene.fog.far = S.weather === 'fog' && S.mode !== 'menu' ? 55 : S.weather === 'storm' && S.mode !== 'menu' ? 260 : 700;
   }
   document.body.classList.toggle('underwater', under);
   audio.setUnderwater(under);
@@ -829,12 +1001,12 @@ if (saved && saved.pop > 0) {
     leaveMenu();
     for (const k of SAVE_FIELDS) if (k in saved) S[k] = saved[k];
     S.up = S.up || {};
+    S.alive = S.alive || RESIDENTS.map((r) => r.id);
     startDay();
   });
 }
 
 // ============ Сенсорное управление ============
-const isTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
 if (isTouch) {
   document.body.classList.add('touch');
   $('touch').classList.remove('hidden');
@@ -869,8 +1041,9 @@ if (isTouch) {
     for (const t of e.changedTouches) {
       if (t.identifier === stickId) setStick(t);
       else if (t.identifier === lookId) {
-        yaw -= (t.clientX - lastX) * 0.006;
-        pitch = Math.max(-0.45, Math.min(1.25, pitch + (t.clientY - lastY) * 0.006));
+        const k = 0.006 * settings.sens;
+        yaw -= (t.clientX - lastX) * k;
+        pitch = Math.max(-0.45, Math.min(1.25, pitch + (t.clientY - lastY) * k * (settings.invert ? -1 : 1)));
         lastX = t.clientX;
         lastY = t.clientY;
       }
@@ -900,7 +1073,7 @@ if (isTouch) {
 }
 
 // для фона меню и для автотестов
-window.__deepback = { S, player, city, ocean, deeplings, startRun, endDay, keys, pressed, setYaw: (v) => (yaw = v) };
+window.__deepback = { S, player, city, ocean, deeplings, startRun, startDay, endDay, keys, pressed, setYaw: (v) => (yaw = v) };
 
 // ============ Цикл ============
 const clock = new THREE.Clock();

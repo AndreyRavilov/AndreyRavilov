@@ -23,11 +23,12 @@ export class Ocean {
     this.mesh.renderOrder = 2;
     scene.add(this.mesh);
     this.level = 3;
+    this.amp = 1;
     this.t = 0;
   }
 
   waveAt(x, z, t = this.t) {
-    return (
+    return this.amp * (
       0.55 * Math.sin(x * 0.045 + t * 0.9) +
       0.4 * Math.sin(z * 0.06 - t * 1.1) +
       0.25 * Math.sin((x + z) * 0.11 + t * 1.7)

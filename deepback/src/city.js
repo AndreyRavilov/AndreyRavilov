@@ -12,6 +12,7 @@ export const ITEM = {
   fuel: { name: 'Бочка ворвани', weight: 3, icon: '🛢️' },
   relic: { name: 'Реликвия', weight: 1, icon: '◈' },
   scrap: { name: 'Обломки', weight: 2, icon: '⚙️' },
+  keepsake: { name: 'Памятная вещь', weight: 1, icon: '🎁' },
 };
 
 const M = {
@@ -173,7 +174,7 @@ export class City {
   }
 
   // ---------------- Генерация дня ----------------
-  generate(seed, cycle, relicIndex, relicTotal) {
+  generate(seed, cycle, relicIndex, relicTotal, opts = {}) {
     this.clear();
     const rng = mulberry32(seed);
 
@@ -216,6 +217,11 @@ export class City {
     for (let i = 0; i < 8; i++) {
       const p = this.randomPoint(rng, 0.15, 0.8, 1);
       if (p) this.addPickup('fuel', p.x, p.z);
+    }
+    // Потерянная вещь жителя — на опасном краю
+    if (opts.keepsake) {
+      const p = this.randomPoint(rng, 0.86, 0.97, 1);
+      if (p) this.addPickup('keepsake', p.x, p.z);
     }
     // Обломки для мастерской Ковчега
     for (let i = 0; i < 7; i++) {
@@ -377,6 +383,11 @@ export class City {
       tail.rotation.x = Math.PI / 2;
       tail.position.z = 0.75;
       g.add(tail);
+    } else if (type === 'keepsake') {
+      const box = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.4, 0.4), new THREE.MeshStandardMaterial({ color: 0xffb3d1, emissive: 0xff5fa2, emissiveIntensity: 1.2 }));
+      g.add(box);
+      const light = new THREE.PointLight(0xff7fb8, 14, 12, 1.8);
+      g.add(light);
     } else if (type === 'scrap') {
       const gear = new THREE.Mesh(new THREE.TorusGeometry(0.45, 0.14, 6, 10), M.steel);
       gear.rotation.x = 0.4;
@@ -405,7 +416,7 @@ export class City {
     }
     const halo = new THREE.Mesh(new THREE.SphereGeometry(type === 'relic' ? 1.5 : 1.0, 12, 8), M.glow);
     halo.material = M.glow.clone();
-    halo.material.color.set({ food: 0xcff6ff, fuel: 0xffb070, scrap: 0xd0d6ff, relic: 0x80ffff }[type]);
+    halo.material.color.set({ food: 0xcff6ff, fuel: 0xffb070, scrap: 0xd0d6ff, relic: 0x80ffff, keepsake: 0xff9fc8 }[type]);
     g.add(halo);
     const gy = y ?? this.groundAt(x, z);
     g.position.set(x, gy + 0.9, z);

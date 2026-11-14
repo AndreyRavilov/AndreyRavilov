@@ -1,0 +1,16 @@
+{
+  "name": "deepback",
+  "version": "1.0.0",
+  "private": true,
+  "description": "DEEPBACK — 3D-игра о городе на спине гигантского кита",
+  "type": "module",
+  "scripts": {
+    "start": "node tools/serve.mjs",
+    "test": "npm run test:unit && npm run test:e2e",
+    "test:unit": "node --test \"tests/unit/**/*.test.js\"",
+    "test:e2e": "node --test --test-concurrency=1 \"tests/e2e/**/*.test.js\""
+  },
+  "devDependencies": {
+    "three": "0.170.0"
+  }
+}

@@ -10,7 +10,7 @@ export class Audio {
     if (!AC) return;
     const ctx = (this.ctx = new AC());
     this.master = ctx.createGain();
-    this.master.gain.value = 0.7;
+    this.master.gain.value = this.volume ?? 0.7;
     this.filter = ctx.createBiquadFilter();
     this.filter.type = 'lowpass';
     this.filter.frequency.value = 18000;
@@ -41,6 +41,11 @@ export class Audio {
     lfoG.gain.value = 0.15;
     lfo.connect(lfoG).connect(this.waveGain.gain);
     lfo.start();
+  }
+
+  setVolume(v) {
+    this.volume = v;
+    if (this.master) this.master.gain.value = v;
   }
 
   resume() {
@@ -98,6 +103,24 @@ export class Audio {
 
   hit() {
     this.tone({ type: 'square', f0: 180, f1: 60, dur: 0.35, vol: 0.18, lp: 1200 });
+  }
+
+  thunder() {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    const len = this.ctx.sampleRate * 3;
+    const buf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 2);
+    const s = this.ctx.createBufferSource();
+    s.buffer = buf;
+    const lp = this.ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.value = 180;
+    const g = this.ctx.createGain();
+    g.gain.value = 1.4;
+    s.connect(lp).connect(g).connect(this.master);
+    s.start(t + 0.2 + Math.random() * 0.6);
   }
 
   blow() {

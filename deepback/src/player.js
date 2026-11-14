@@ -90,6 +90,7 @@ export class Player {
       food: new THREE.MeshStandardMaterial({ color: 0x9fc3d6, metalness: 0.5, roughness: 0.3 }),
       fuel: new THREE.MeshStandardMaterial({ color: 0xb4532a }),
       scrap: new THREE.MeshStandardMaterial({ color: 0x8a96a0, metalness: 0.8, roughness: 0.4 }),
+      keepsake: new THREE.MeshStandardMaterial({ color: 0xffb3d1, emissive: 0xff5fa2, emissiveIntensity: 1 }),
       relic: new THREE.MeshStandardMaterial({ color: 0xffe9a8, emissive: 0x5ff0ff, emissiveIntensity: 1.4 }),
     };
     g.traverse((c) => c.isMesh && (c.castShadow = true));
@@ -162,8 +163,11 @@ export class Player {
 
     const accel = this.onGround ? 14 : this.swimming ? 4 : 3;
     const k = Math.min(1, accel * dt);
-    this.vel.x += (mx * speed - this.vel.x) * k;
-    this.vel.z += (mz * speed - this.vel.z) * k;
+    // ветер в шторм сносит, пока ты на поверхности
+    const wx = !this.swimming && world.wind ? world.wind.x : 0;
+    const wz = !this.swimming && world.wind ? world.wind.z : 0;
+    this.vel.x += (mx * speed + wx - this.vel.x) * k;
+    this.vel.z += (mz * speed + wz - this.vel.z) * k;
 
     // --- вертикаль ---
     if (this.swimming) {
