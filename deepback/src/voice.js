@@ -4,7 +4,7 @@
 
 // id → длительность фразы в секундах (из ElevenLabs).
 // Сцены ролика: deep, reveal…; записи реликвий: relic1…relic7; финалы: ending-<key>.
-export const VO = { deep: 4.8, reveal: 6.56, breath: 2.64, dive: 4.0, night: 6.32, you: 7.28, relic: 6.08 };
+export const VO = { deep: 4.8, reveal: 6.56, breath: 2.64, dive: 4.0, night: 6.32, you: 7.28, relic: 6.08, task: 5.28, relic2: 10.24, relic3: 13.68 };
 export const VO_LINES = Object.keys(VO);
 
 export class Voice {
