@@ -35,6 +35,7 @@ const M = {
 };
 M.trim = new THREE.MeshStandardMaterial({ color: 0x2c2620, roughness: 0.85 });
 M.deck = new THREE.MeshStandardMaterial({ color: 0x7a5c40, roughness: 0.9 });
+M.pool = new THREE.MeshBasicMaterial({ color: 0xff9a40, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, polygonOffset: true, polygonOffsetFactor: -3 });
 M.ao = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.45, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 });
 M.net = new THREE.MeshStandardMaterial({ color: 0x3a3a30, roughness: 1, transparent: true, alphaTest: 0.3, side: THREE.DoubleSide });
 export const MATERIALS = M;
@@ -60,6 +61,13 @@ function grime(geo, h, groundLocal) {
   }
   geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
   return geo;
+}
+
+// Пятно света под фонарём
+let POOL_G = null;
+function POOL_GEO() {
+  if (!POOL_G) POOL_G = new THREE.CircleGeometry(3.2, 28).rotateX(-Math.PI / 2);
+  return POOL_G;
 }
 
 // Мягкая тень-пятно у основания построек
@@ -553,6 +561,10 @@ export class City {
     this.group.add(g);
     this.colliders.push({ type: 'box', minX: x - 0.2, maxX: x + 0.2, minZ: z - 0.2, maxZ: z + 0.2, bottom: y - 1, top: y + 4.2 });
     this.lamps.push({ x: x + 1.0, y: y + 3.95, z });
+    // тёплое пятно света на земле под фонарём (видно в сумерках)
+    const pool = new THREE.Mesh(POOL_GEO(), M.pool);
+    pool.position.set(x + 1.0, backHeight(x + 1.0, z) + 0.06, z);
+    this.group.add(pool);
   }
 
   addCrate(rng, x, z) {
@@ -686,6 +698,7 @@ export function inside(c, x, z, r) {
 export function dressMaterials(TEX) {
   GLOW.tex = TEX.glowDot();
   M.ao.map = TEX.glowDot();
+  M.pool.map = TEX.glowDot();
   M.ao.opacity = 0.55;
   M.ao.needsUpdate = true;
   WALLS.forEach((hex, i) => {

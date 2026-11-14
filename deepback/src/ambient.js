@@ -193,6 +193,26 @@ export class Ambient {
     }
     this.rays.visible = false;
     scene.add(this.rays);
+    // клочья тумана над водой
+    this.mist = new Particles(scene, 70, { tex: dot, color: 0xdfe8ea, sizeScale: 2600 });
+    this.mistT = 0;
+    // выпрыгивающие рыбы
+    const fishMat = new THREE.MeshStandardMaterial({ color: 0xb8d0dc, roughness: 0.25, metalness: 0.7 });
+    this.jumpers = [];
+    for (let i = 0; i < 3; i++) {
+      const f = new THREE.Group();
+      const body = new THREE.Mesh(new THREE.SphereGeometry(0.35, 10, 8), fishMat);
+      body.scale.set(0.45, 0.6, 1.4);
+      f.add(body);
+      const tail = new THREE.Mesh(new THREE.ConeGeometry(0.28, 0.45, 4), fishMat);
+      tail.rotation.x = Math.PI / 2;
+      tail.position.z = 0.6;
+      f.add(tail);
+      f.visible = false;
+      scene.add(f);
+      this.jumpers.push({ mesh: f, t: 0, dur: 1, from: new THREE.Vector3(), dir: new THREE.Vector3(), splashed: false });
+    }
+    this.jumpT = 4;
     this.smokeT = 0;
     this.bubbleT = 0;
     this.snowT = 0;
@@ -264,6 +284,53 @@ export class Ambient {
     }
     const sprayK = Math.max(0, 1 - p * 1.3);
     this.spray.update(dt, (k) => ({ alpha: (1 - k) * 0.45 * sprayK, grow: 0.8 }), 0.5);
+
+    // туман: утром и в туманную погоду — клочья дымки над самой водой
+    const misty = (p < 0.22 || weather === 'fog') && underK < 0.5;
+    this.mistT -= dt;
+    if (misty && this.mistT <= 0) {
+      this.mistT = 0.35;
+      const cp = camera.position;
+      const a = Math.random() * Math.PI * 2;
+      const r = 25 + Math.random() * 90;
+      const x = cp.x + Math.cos(a) * r;
+      const z = cp.z + Math.sin(a) * r;
+      this.mist.spawn(x, ctx.surface(x, z) + 0.6 + Math.random() * 1.5, z, 0.4 + (ctx.wind?.x || 0) * 0.3, 0, 0.2, 14, 1.4 + Math.random() * 1.2);
+    }
+    this.mist.update(dt, (k) => ({ alpha: Math.sin(k * Math.PI) * (weather === 'fog' ? 0.45 : 0.32), grow: 0.05 }));
+
+    // рыбы выпрыгивают у кромки и с брызгами падают обратно
+    this.jumpT -= dt;
+    if (this.jumpT <= 0 && underK < 0.5 && p < 0.85 && ctx.shore) {
+      this.jumpT = 3 + Math.random() * 5;
+      const j = this.jumpers.find((x) => x.t <= 0);
+      const s = ctx.shore();
+      if (j && s) {
+        const a = Math.random() * Math.PI * 2;
+        j.from.set(s.x + Math.cos(a) * 6, s.y - 0.4, s.z + Math.sin(a) * 6);
+        j.dir.set(Math.cos(a + 1.2), 0, Math.sin(a + 1.2));
+        j.dur = 0.9 + Math.random() * 0.4;
+        j.t = j.dur;
+        j.splashed = false;
+        j.mesh.visible = true;
+        for (let i = 0; i < 8; i++) this.spray.spawn(j.from.x, j.from.y + 0.4, j.from.z, (Math.random() - 0.5) * 2, 1.5 + Math.random() * 2, (Math.random() - 0.5) * 2, 0.7, 0.2);
+      }
+    }
+    for (const j of this.jumpers) {
+      if (j.t <= 0) continue;
+      j.t -= dt;
+      const k = 1 - Math.max(0, j.t) / j.dur;
+      const x = j.from.x + j.dir.x * k * 4;
+      const z = j.from.z + j.dir.z * k * 4;
+      const y = j.from.y + Math.sin(k * Math.PI) * 2.2;
+      j.mesh.position.set(x, y, z);
+      j.mesh.lookAt(x + j.dir.x, y + Math.cos(k * Math.PI) * 2.2, z + j.dir.z);
+      j.mesh.rotateY(Math.PI);
+      if (j.t <= 0) {
+        j.mesh.visible = false;
+        for (let i = 0; i < 10; i++) this.spray.spawn(x, j.from.y + 0.4, z, (Math.random() - 0.5) * 2.5, 1.5 + Math.random() * 2.5, (Math.random() - 0.5) * 2.5, 0.8, 0.25);
+      }
+    }
 
     // лучи света: только днём и под водой, плывут вместе с камерой
     const rays = underK > 0.3 && p < 0.8;

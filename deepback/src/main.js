@@ -191,6 +191,7 @@ function applyTime(p) {
   hemi.intensity *= 0.55;
   MATERIALS.window.emissiveIntensity = 0.3 + p * 2.2;
   MATERIALS.lamp.emissiveIntensity = 1 + p * 3;
+  MATERIALS.pool.opacity = Math.max(0, Math.min(1, (p - 0.45) / 0.3)) * 0.22;
 }
 
 // ============ Состояние игры ============
