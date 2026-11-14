@@ -98,6 +98,18 @@
   #ark-prompt b { color: var(--accent); border: 1px solid var(--accent); border-radius: 5px; padding: 0 6px; }
   .ark-label { position: absolute; transform: translate(-50%, -100%); font-size: 13px; color: #f4ead8; text-shadow: 0 1px 4px #000, 0 0 2px #000; white-space: nowrap; transition: opacity .2s; }
   .ark-label.person { font-weight: 700; color: #ffe2b0; }
+  /* подсказка по оружию: у левого края, меню при этом сдвигаются вправо */
+  #arms-hint { position: fixed; left: max(14px, env(safe-area-inset-left, 0px)); top: 50%; transform: translateY(-50%); width: 250px; z-index: 20; font-size: 13px; pointer-events: none; }
+  #arms-hint ul { list-style: none; margin: 8px 0; padding: 0; display: grid; gap: 6px; }
+  #arms-hint li { display: flex; gap: 8px; align-items: baseline; }
+  #arms-hint kbd { font-family: inherit; font-weight: 800; color: var(--accent); border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; white-space: nowrap; }
+  #arms-hint p { margin: 6px 0 8px; color: var(--muted); }
+  .arms-hint-track { height: 3px; background: rgba(255,255,255,.1); border-radius: 2px; overflow: hidden; }
+  #arms-hint-bar { height: 100%; background: var(--accent); animation: armsHint 30s linear forwards; }
+  @keyframes armsHint { from { width: 100%; } to { width: 0%; } }
+  body.has-arms-hint .screen { padding-left: 280px; }
+  body.has-arms-hint #bottom { bottom: 14px; left: 280px; }
+  @media (prefers-reduced-motion: reduce) { #arms-hint-bar { animation: none; } }
   .cine-label { position: absolute; transform: translate(-50%, -100%); padding: 6px 12px; border-radius: 8px; background: rgba(6, 16, 22, .72); border: 1px solid var(--accent); color: #eafffb; font-size: clamp(14px, 1.4vw, 18px); font-weight: 600; white-space: nowrap; opacity: 0; transition: opacity .25s; }
   .cine-label::after { content: ''; position: absolute; left: 50%; bottom: -9px; transform: translateX(-50%); border: 5px solid transparent; border-top-color: var(--accent); }
   #cine-title { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; opacity: 0; transition: opacity 1.2s; }
@@ -207,6 +219,19 @@
   <div id="ark-prompt" class="hidden"></div>
 </div>
 
+<aside id="arms-hint" class="panel hidden" aria-live="polite">
+  <div class="label">КАК ПОЛЬЗОВАТЬСЯ ОРУЖИЕМ</div>
+  <ul>
+    <li><kbd>1</kbd> взять острогу (или гарпун)</li>
+    <li><kbd>2</kbd> взять солевую бомбу</li>
+    <li><kbd>3</kbd> взять ракетницу</li>
+    <li><kbd>ЛКМ</kbd> ударить, бросить или выстрелить тем, что в руке</li>
+    <li><kbd>X</kbd> убрать оружие</li>
+  </ul>
+  <p>Быстро, не доставая: <kbd>F</kbd> удар, <kbd>G</kbd> бомба, <kbd>Q</kbd> ракетница.</p>
+  <div class="arms-hint-track"><div id="arms-hint-bar"></div></div>
+</aside>
+
 <div class="screen" id="menu">
   <div class="card">
     <h1>DEEPBACK</h1>
@@ -218,6 +243,7 @@
       <kbd>Space</kbd><span>прыжок / всплыть · <b>C</b> — нырнуть</span>
       <kbd>E</kbd><span>подобрать / сдать груз у шлюза</span>
       <kbd>F</kbd><span>гарпун: отогнать пиявок и глубинников</span>
+      <kbd>1 2 3</kbd><span>взять оружие в руку · <b>ЛКМ</b> — использовать · <b>X</b> — убрать</span>
       <kbd>G</kbd><span>бросить солевую бомбу (купить у Брана)</span>
       <kbd>Q</kbd><span>ракетница, раз в день (купить у Брана)</span>
       <kbd>R</kbd><span>у шлюза: укрыться и закончить день</span>

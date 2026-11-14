@@ -252,6 +252,11 @@ const canvas = renderer.domElement;
 canvas.addEventListener('mousedown', (e) => {
   dragging = true;
   audio.resume();
+  // левая кнопка с захваченным курсором — использовать то, что в руке
+  if (e.button === 0 && document.pointerLockElement === canvas && (S.mode === 'day' || S.mode === 'closing') && !S.paused && S.held) {
+    useHeld();
+    return;
+  }
   if (S.mode === 'day' || S.mode === 'closing' || S.mode === 'ark') lockPointer();
 });
 addEventListener('mouseup', () => (dragging = false));
@@ -418,9 +423,10 @@ function updateHud() {
   $('need').textContent = `На ночь нужно: 🐟 ${needFood()} · 🛢️ ${needFuel()}`;
   const w = player.weight;
   const A = S.arms;
+  const inHand = S.held ? ` · в руке: <b>${S.held === 'spear' ? (A.spear ? 'острога' : 'гарпун') : HELD_NAMES[S.held]}</b>` : '';
   $('weapons').innerHTML = `<span class="lbl">F</span> ${A.spear ? 'острога' : 'гарпун'}` +
     (A.bombs ? ` · <span class="lbl">G</span> соль ×${A.bombs}` : '') +
-    (A.flare ? ` · <span class="lbl">Q</span> ракетница ${A.flareReady ? '✓' : '—'}` : '');
+    (A.flare ? ` · <span class="lbl">Q</span> ракетница ${A.flareReady ? '✓' : '—'}` : '') + inHand;
   $('cargo').innerHTML = `<span class="lbl">Груз ${w}/${player.capacity}</span> ` + (player.carried.map((t) => `<span class="it ${t}">${ITEM[t].icon}</span>`).join('') || '<span class="empty">пусто</span>');
   $('oxy').classList.toggle('hidden', player.oxygen > 0.995 && !player.headUnder);
   $('oxybar').style.width = Math.max(0, player.oxygen) * 100 + '%';
@@ -499,6 +505,8 @@ function startDay() {
   S.harpoonCd = 0;
   applyUpgrades();
   S.arms = ARMS.morning(S.arms);
+  S.held = null;
+  player.held = null;
   S.bombsInAir = [];
   const drng = mulberry32(S.runSeed + S.cycle * 7919);
   S.weather = rollWeather(drng, S.cycle);
@@ -723,7 +731,7 @@ function armoryItems() {
       reason: why === 'Уже есть.' || (why && why.startsWith('Больше')) ? why : null,
       onBuy: () => {
         const r = ARMS.buy(S.arms, S.scrap, w.key);
-        if (r.ok) { S.arms = r.arms; S.scrap = r.scrap; }
+        if (r.ok) { S.arms = r.arms; S.scrap = r.scrap; showArmsHint(); }
       },
     };
   });
@@ -842,6 +850,7 @@ function updateGame(dt) {
 
   updateNavigator(dt);
   updateHarpoon(dt);
+  updateHolding();
   if (pressed.has('KeyG')) throwBomb();
   if (pressed.has('KeyQ')) fireFlare();
   updateBombs(dt);
@@ -1585,6 +1594,51 @@ function updateArk(dt) {
 }
 
 // ============ Оружие ============
+// 1/2/3 — взять в руку, ЛКМ — использовать, X — убрать. F/G/Q — быстро, без доставания.
+const HELD_NAMES = { spear: 'острога', harpoon: 'гарпун', bombs: 'солевая бомба', flare: 'ракетница' };
+function hold(kind) {
+  if (kind === 'bombs' && S.arms.bombs <= 0) { toast('Солевых бомб нет. Бран продаёт их ночью в Ковчеге.', 'warn'); return; }
+  if (kind === 'flare' && !S.arms.flare) { toast('Ракетницы нет. Бран продаёт её ночью в Ковчеге.', 'warn'); return; }
+  S.held = kind;
+  player.held = kind;
+  toast(`В руке: ${kind === 'spear' ? (S.arms.spear ? 'острога' : 'гарпун') : HELD_NAMES[kind]}. ЛКМ — использовать, X — убрать.`);
+}
+function holster() {
+  if (!S.held) return;
+  S.held = null;
+  player.held = null;
+  toast('Оружие убрано.');
+}
+function useHeld() {
+  if (S.held === 'spear') strike();
+  else if (S.held === 'bombs') {
+    throwBomb();
+    if (S.arms.bombs <= 0) holster();
+  } else if (S.held === 'flare') fireFlare();
+}
+function updateHolding() {
+  if (pressed.has('Digit1')) hold('spear');
+  if (pressed.has('Digit2')) hold('bombs');
+  if (pressed.has('Digit3')) hold('flare');
+  if (pressed.has('KeyX')) holster();
+}
+
+// Подсказка после покупки оружия: 30 секунд у левого края, меню сдвигаются вправо
+let armsHintTimer = null;
+function showArmsHint() {
+  const el = $('arms-hint');
+  el.classList.remove('hidden');
+  document.body.classList.add('has-arms-hint');
+  const bar = $('arms-hint-bar');
+  bar.style.animation = 'none';
+  void bar.offsetWidth;
+  bar.style.animation = '';
+  clearTimeout(armsHintTimer);
+  armsHintTimer = setTimeout(() => {
+    el.classList.add('hidden');
+    document.body.classList.remove('has-arms-hint');
+  }, 30000);
+}
 const bombGeo = new THREE.SphereGeometry(0.2, 10, 8);
 const bombMat = new THREE.MeshStandardMaterial({ color: 0xeeeadc, roughness: 1 });
 function throwBomb() {
@@ -1670,7 +1724,12 @@ function killLeech(L) {
 const HARPOON_CD = [1.6, 1.1, 0.7];
 function updateHarpoon(dt) {
   S.harpoonCd -= dt;
-  if (!pressed.has('KeyF') || S.harpoonCd > 0) return;
+  if (pressed.has('KeyF')) strike();
+}
+
+// Удар гарпуном / острогой
+function strike() {
+  if (S.harpoonCd > 0) return;
   const lvl = S.up.harpoon || 0;
   S.harpoonCd = HARPOON_CD[lvl];
   player.swing = 0.35;
@@ -1906,7 +1965,7 @@ if (saved && saved.pop > 0) {
 
 
 // для фона меню и для автотестов
-window.__deepback = { ark, enterArk, killLeech, lineClear: (...a) => lineClear(...a), introPoint: (s) => introPoint(s), S, sky, envScene, whale, ambient, scene, post, voice, intro, startIntro, endIntro, player, city, ocean, deeplings, rain, navDots, startRun, startDay, endDay, keys, pressed, setYaw: (v) => (yaw = v) };
+window.__deepback = { showArmsHint, ark, enterArk, killLeech, lineClear: (...a) => lineClear(...a), introPoint: (s) => introPoint(s), S, sky, envScene, whale, ambient, scene, post, voice, intro, startIntro, endIntro, player, city, ocean, deeplings, rain, navDots, startRun, startDay, endDay, keys, pressed, setYaw: (v) => (yaw = v) };
 
 // ============ Цикл ============
 const clock = new THREE.Clock();

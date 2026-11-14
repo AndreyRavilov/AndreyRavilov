@@ -141,6 +141,26 @@ export class Player {
     g.add(pole);
     this.pole = pole;
 
+    // что в руке: бомба или ракетница (острога/гарпун — это pole)
+    this.held = null;
+    const handBomb = new THREE.Mesh(new THREE.SphereGeometry(0.16, 10, 8), new THREE.MeshStandardMaterial({ color: 0xeeeadc, roughness: 1 }));
+    handBomb.position.set(0.43, 0.7, -0.15);
+    handBomb.visible = false;
+    g.add(handBomb);
+    const flareGun = new THREE.Group();
+    const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.38, 10), new THREE.MeshStandardMaterial({ color: 0xc23a2a, roughness: 0.5 }));
+    barrel.rotation.x = Math.PI / 2;
+    barrel.position.z = -0.15;
+    flareGun.add(barrel);
+    const grip = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.2, 0.1), new THREE.MeshStandardMaterial({ color: 0x3a2a1e }));
+    grip.position.y = -0.1;
+    flareGun.add(grip);
+    flareGun.position.set(0.43, 0.8, -0.2);
+    flareGun.visible = false;
+    g.add(flareGun);
+    this.handBomb = handBomb;
+    this.flareGun = flareGun;
+
     // груз на спине
     this.pack = new THREE.Group();
     this.pack.position.set(0, 1.5, 0.62);
@@ -328,7 +348,14 @@ export class Player {
       const k = Math.sin(Math.max(0, this.swing) / 0.35 * Math.PI);
       this.pole.visible = true;
       this.pole.position.z = -k * 0.9;
-    } else this.pole.visible = false;
+    } else {
+      // острога в руке — шест виден и в покое
+      this.pole.visible = this.held === 'spear';
+      this.pole.position.z = 0;
+    }
+    this.handBomb.visible = this.held === 'bombs';
+    this.flareGun.visible = this.held === 'flare';
+    if (this.held && this.arms) this.arms[1].rotation.x = -0.6; // правая рука вперёд
   }
 }
 

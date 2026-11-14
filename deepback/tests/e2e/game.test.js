@@ -169,8 +169,9 @@ test('глубинник кусает под водой и отнимает во
     d.player.pos.set(D.pos.x, D.pos.y - 1, D.pos.z + 0.5);
     d.player.vel.set(0, 0, 0);
   });
-  await waitFor(page, () => window.__deepback.player.oxygen < 0.8);
-  assert.match(await page.textContent('#toasts'), /Глубинник укусил/);
+  // ждём именно укуса: воздух под водой тратится и сам по себе
+  await waitFor(page, () => /Глубинник укусил/.test(document.getElementById('toasts').textContent));
+  assert.ok(await game(page, () => window.__deepback.player.oxygen < 0.8));
 });
 
 test('дыхало подбрасывает ныряльщика', async (t) => {
@@ -506,6 +507,11 @@ test('оружейная Брана: острога, солевые бомбы �
   for (const name of ['Костяная острога', 'Солевые бомбы', 'Ракетница']) {
     await page.locator('.up', { hasText: name }).locator('button').click();
   }
+  // после покупки — подсказка у левого края, окно магазина её не перекрывает
+  assert.ok(await page.isVisible('#arms-hint'));
+  assert.match(await page.textContent('#arms-hint'), /убрать оружие/);
+  const boxes = await page.evaluate(() => ['#arms-hint', '#modal .card'].map((s) => document.querySelector(s).getBoundingClientRect().toJSON()));
+  assert.ok(boxes[0].right <= boxes[1].left, `подсказка (${boxes[0].right}) заходит на окно магазина (${boxes[1].left})`);
   const arms = await game(page, () => ({ ...window.__deepback.S.arms, scrap: window.__deepback.S.scrap }));
   assert.deepEqual(arms, { spear: true, bombs: 3, flare: true, flareReady: true, scrap: 20 - 4 - 2 - 5 });
   await clickModalButton(page, 'Отойти');
@@ -513,6 +519,15 @@ test('оружейная Брана: острога, солевые бомбы �
   await clickModalButton(page, 'Лечь без записи');
   await waitFor(page, () => window.__deepback.S.mode === 'day' && window.__deepback.S.cycle === 4);
   await waitFor(page, () => /острога.*соль ×3.*ракетница/s.test(document.getElementById('weapons').textContent));
+
+  // достать и убрать оружие
+  await page.keyboard.press('Digit2');
+  await waitFor(page, () => window.__deepback.S.held === 'bombs' && window.__deepback.player.handBomb.visible);
+  await waitFor(page, () => /в руке: солевая бомба/.test(document.getElementById('weapons').textContent));
+  await page.keyboard.press('Digit1');
+  await waitFor(page, () => window.__deepback.S.held === 'spear' && window.__deepback.player.pole.visible);
+  await page.keyboard.press('KeyX');
+  await waitFor(page, () => window.__deepback.S.held === null && !window.__deepback.player.pole.visible);
 
   // бомба: пиявка прямо перед ныряльщиком
   const aim = async (i, dist) => game(page, ({ i, dist }) => {
