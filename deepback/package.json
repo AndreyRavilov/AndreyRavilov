@@ -1,6 +1,6 @@
 {
   "name": "deepback",
-  "version": "1.0.0",
+  "version": "1.4.0",
   "private": true,
   "description": "DEEPBACK — 3D-игра о городе на спине гигантского кита",
   "type": "module",
