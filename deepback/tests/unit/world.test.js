@@ -203,6 +203,23 @@ test('тяжёлый груз замедляет', () => {
   assert.ok(dist(['fuel', 'fuel']) < dist([]));
 });
 
+test('регрессия: в шторм стоящий персонаж не уходит сам (баг четвёртого дня)', () => {
+  const city = makeCity(4);
+  const world = makeWorld(city);
+  world.wind = { x: 3.2, z: 0 }; // самый сильный порыв
+  const p = new Player(new THREE.Scene());
+  const o = openSpot(city);
+  p.reset(new THREE.Vector3(o.x, 30, o.z));
+  step(p, world, new Set(), 1.5);
+  const x0 = p.pos.x;
+  step(p, world, new Set(), 3); // весь порыв стоим, ничего не нажимая
+  assert.ok(Math.abs(p.pos.x - x0) < 1.6, `за порыв снесло на ${(p.pos.x - x0).toFixed(2)} м`);
+  world.wind = null; // затишье
+  const x1 = p.pos.x;
+  step(p, world, new Set(), 2);
+  assert.ok(Math.abs(p.pos.x - x1) < 0.05, 'между порывами персонаж стоит');
+});
+
 test('шторм сносит ветром, пока ныряльщик на поверхности', () => {
   const city = makeCity(4);
   const world = makeWorld(city);
@@ -212,7 +229,7 @@ test('шторм сносит ветром, пока ныряльщик на п�
   p.reset(new THREE.Vector3(o.x, 30, o.z));
   step(p, world, new Set(), 1.5);
   const x0 = p.pos.x;
-  step(p, world, new Set(), 1);
+  step(p, world, new Set(['Space']), 1.2); // в прыжке порыв сносит
   assert.ok(p.pos.x > x0 + 0.5);
 });
 

@@ -213,7 +213,7 @@ const canvas = renderer.domElement;
 canvas.addEventListener('mousedown', (e) => {
   dragging = true;
   audio.resume();
-  if (S.mode === 'day' || S.mode === 'closing') canvas.requestPointerLock?.();
+  if (S.mode === 'day' || S.mode === 'closing') lockPointer();
 });
 addEventListener('mouseup', () => (dragging = false));
 addEventListener('mousemove', (e) => {
@@ -223,6 +223,19 @@ addEventListener('mousemove', (e) => {
     pitch = Math.max(-0.45, Math.min(1.25, pitch + e.movementY * k * (settings.invert ? -1 : 1)));
   }
 });
+// Захват курсора возможен только сразу после клика или нажатия клавиши.
+// Без этого браузер отказывает (например, когда ролик доиграл до конца сам).
+function lockPointer() {
+  if (!canvas.requestPointerLock) return;
+  if (navigator.userActivation && !navigator.userActivation.isActive) {
+    if (S.mode === 'day') toast('Кликни по экрану, чтобы управлять камерой мышью.');
+    return;
+  }
+  try {
+    const r = canvas.requestPointerLock();
+    if (r && r.catch) r.catch(() => {});
+  } catch (e) { /* без захвата камера крутится перетаскиванием */ }
+}
 let hadLock = false;
 document.addEventListener('pointerlockchange', () => {
   if (document.pointerLockElement === canvas) hadLock = true;
@@ -240,6 +253,7 @@ function toast(text, cls = '') {
   setTimeout(() => el.remove(), 4500);
 }
 function showModal({ title, body, buttons, wide = false }) {
+  keys.clear(); // иначе клавиша, отпущенная за окном, «залипает» и персонаж идёт сам
   const m = $('modal');
   m.classList.remove('hidden');
   m.querySelector('.card').classList.toggle('wide', wide);
@@ -279,7 +293,7 @@ function setPause(on) {
 }
 $('resume').addEventListener('click', () => {
   setPause(false);
-  canvas.requestPointerLock?.();
+  lockPointer();
 });
 $('journal-btn').addEventListener('click', () => {
   $('pause').classList.add('hidden');
@@ -337,7 +351,8 @@ function updateHud() {
   $('nav-dist').textContent = S.navInfo.dist ? `· ${Math.round(S.navInfo.dist)} м` : '';
   $('hud').classList.toggle('alarm', p > 0.85 && S.mode === 'day');
   const W = WEATHER[S.weather];
-  $('weather').textContent = `${W.icon} ${W.name}`;
+  const gusting = S.weather === 'storm' && S.gust && S.gust.k > 0.3;
+  $('weather').textContent = `${W.icon} ${W.name}${gusting ? ' · порыв ветра!' : ''}`;
   const q = S.quest;
   if (q) {
     const r = resident(q.who);
@@ -411,8 +426,9 @@ function startDay() {
   S.T = ECO.dayLength(S.cycle, S.weather);
   ocean.amp = S.weather === 'storm' ? 2.4 : S.weather === 'calm' ? 0.45 : 1;
   const wa = drng() * Math.PI * 2;
-  S.wind = S.weather === 'storm' ? { x: Math.cos(wa) * 2.6, z: Math.sin(wa) * 2.6 } : null;
-  world.wind = S.wind;
+  S.wind = S.weather === 'storm' ? { x: Math.cos(wa) * 3.2, z: Math.sin(wa) * 3.2 } : null;
+  S.gust = { t: 6, k: 0, on: false, warned: false };
+  world.wind = null;
   rain.visible = S.weather === 'storm';
   S.thunderTimer = 5;
   city.generate(S.runSeed + S.cycle * 1013, S.cycle, S.lore, LORE.length, { keepsake: S.quest?.kind === 'keepsake' });
@@ -436,7 +452,7 @@ function startDay() {
   const W = WEATHER[S.weather];
   if (S.cycle > 1) toast(`${W.icon} ${W.name}. ${W.note}`, S.weather === 'storm' ? 'danger' : '');
   if (S.quest) toast(S.quest.text, 'quest');
-  canvas.requestPointerLock?.();
+  lockPointer();
 }
 
 function deposit() {
@@ -460,7 +476,7 @@ function deposit() {
   checkQuest();
   for (const i of relics) {
     S.paused = true;
-    showModal({ title: LORE[i].title, body: LORE[i].text, buttons: [{ label: 'Спрятать в журнал', onClick: () => { S.paused = false; canvas.requestPointerLock?.(); } }] });
+    showModal({ title: LORE[i].title, body: LORE[i].text, buttons: [{ label: 'Спрятать в журнал', onClick: () => { S.paused = false; lockPointer(); } }] });
   }
 }
 
@@ -482,7 +498,7 @@ function checkQuest() {
     showModal({
       title: `${r.name} · ${r.role}`,
       body: `Ты вернул ${r.keepsake}.\n\n${r.story}\n\nВ благодарность: ⚙️ ${q.reward}.`,
-      buttons: [{ label: 'Вернуться к работе', onClick: () => { S.paused = false; canvas.requestPointerLock?.(); } }],
+      buttons: [{ label: 'Вернуться к работе', onClick: () => { S.paused = false; lockPointer(); } }],
     });
   } else {
     toast(`${r.name} благодарит тебя: +⚙️ ${q.reward}`, 'quest');
@@ -651,7 +667,7 @@ function showJournal() {
     }
   }
   S.paused = true;
-  showModal({ title: 'Журнал Ныряльщика', body, buttons: [{ label: 'Закрыть', onClick: () => { S.paused = false; canvas.requestPointerLock?.(); } }] });
+  showModal({ title: 'Журнал Ныряльщика', body, buttons: [{ label: 'Закрыть', onClick: () => { S.paused = false; lockPointer(); } }] });
 }
 
 // ============ Обновление мира ============
@@ -839,6 +855,19 @@ function updateWeather(dt) {
     rainGeo.attributes.position.needsUpdate = true;
     rain.position.set(camera.position.x, camera.position.y - 10, camera.position.z);
     // молнии
+    // порывы ветра: затишье 6–10 с, порыв ~3 с с плавным нарастанием
+    const G = S.gust;
+    G.t -= dt;
+    if (G.t <= 0) {
+      G.on = !G.on;
+      G.t = G.on ? 2.6 + Math.random() : 6 + Math.random() * 4;
+      if (G.on) {
+        audio.wind?.();
+        if (!G.warned) { toast('Порыв ветра! Пригнись: стоящего на месте почти не сносит.', 'warn'); G.warned = true; }
+      }
+    }
+    G.k += ((G.on ? 1 : 0) - G.k) * Math.min(1, dt * 2.5);
+    world.wind = G.k > 0.02 ? { x: S.wind.x * G.k, z: S.wind.z * G.k } : null;
     S.thunderTimer -= dt;
     if (S.thunderTimer <= 0) {
       S.thunderTimer = 7 + Math.random() * 9;
@@ -1059,8 +1088,8 @@ function introEvent(name) {
     case 'deepling': {
       const D = deeplings[0];
       D.setActive(true, 32);
-      D.pos.set(-30, 12, 18);
-      D.segPos.forEach((sp, i) => sp.set(-30 - i, 12, 18));
+      D.pos.set(-30, 21, 20);
+      D.segPos.forEach((sp, i) => sp.set(-30 - i, 21, 20));
       break;
     }
     case 'growl': audio.tone({ type: 'sawtooth', f0: 75, f1: 38, dur: 1.6, vol: 0.22, attack: 0.3, lp: 500 }); break;
@@ -1133,7 +1162,7 @@ function updateIntro(dt) {
   updateBlowhole(sdt, p);
   if (s.id === 'night') {
     // глубинник проплывает мимо светящегося Ковчега
-    introFake.pos.set(CUT.lerp(-26, 30, st.k), 12 + Math.sin(st.k * 6) * 1.5, CUT.lerp(16, 12, st.k));
+    introFake.pos.set(CUT.lerp(-26, 30, st.k), 21 + Math.sin(st.k * 6) * 1.5, CUT.lerp(18, 14, st.k));
     deeplings[0].update(sdt, introFake, ocean, true, 2.5);
   }
   if (s.id === 'task') updateNavigator(sdt);
@@ -1274,6 +1303,12 @@ function cameraEnv(dark) {
     scene.fog.color.copy(fogDay);
     scene.fog.near = S.weather === 'fog' && S.mode !== 'menu' ? 2 : S.weather === 'storm' && S.mode !== 'menu' ? 30 : 90;
     scene.fog.far = S.weather === 'fog' && S.mode !== 'menu' ? 55 : S.weather === 'storm' && S.mode !== 'menu' ? 260 : 700;
+  }
+  if (under) {
+    // из-под воды неба не видно — только толща воды
+    skyMat.uniforms.top.value.copy(scene.fog.color);
+    skyMat.uniforms.horizon.value.copy(scene.fog.color);
+    starMat.opacity = 0;
   }
   document.body.classList.toggle('underwater', under);
   rain.visible = S.weather === 'storm' && !under && (S.mode === 'day' || S.mode === 'closing');

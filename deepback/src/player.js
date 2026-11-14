@@ -159,9 +159,12 @@ export class Player {
 
     const accel = this.onGround ? 14 : this.swimming ? 4 : 3;
     const k = Math.min(1, accel * dt);
-    // ветер в шторм сносит, пока ты на поверхности
-    const wx = !this.swimming && world.wind ? world.wind.x : 0;
-    const wz = !this.swimming && world.wind ? world.wind.z : 0;
+    // порыв ветра в шторм: в прыжке и на бегу сносит сильно,
+    // стоящего на месте — почти нет (иначе персонаж «сам идёт»)
+    let windK = 0;
+    if (world.wind && !this.swimming) windK = !this.onGround ? 1 : ml > 0 ? 0.8 : 0.15;
+    const wx = world.wind ? world.wind.x * windK : 0;
+    const wz = world.wind ? world.wind.z * windK : 0;
     this.vel.x += (mx * speed + wx - this.vel.x) * k;
     this.vel.z += (mz * speed + wz - this.vel.z) * k;
 

@@ -105,6 +105,26 @@ export class Audio {
     this.tone({ type: 'square', f0: 180, f1: 60, dur: 0.35, vol: 0.18, lp: 1200 });
   }
 
+  wind() {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    const len = this.ctx.sampleRate * 3;
+    const buf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.sin((i / len) * Math.PI);
+    const s = this.ctx.createBufferSource();
+    s.buffer = buf;
+    const bp = this.ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.frequency.setValueAtTime(300, t);
+    bp.frequency.linearRampToValueAtTime(900, t + 1.5);
+    bp.frequency.linearRampToValueAtTime(350, t + 3);
+    const g = this.ctx.createGain();
+    g.gain.value = 0.35;
+    s.connect(bp).connect(g).connect(this.master);
+    s.start(t);
+  }
+
   thunder() {
     if (!this.ctx) return;
     const t = this.ctx.currentTime;
