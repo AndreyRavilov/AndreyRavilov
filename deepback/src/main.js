@@ -1059,8 +1059,8 @@ function introEvent(name) {
     case 'deepling': {
       const D = deeplings[0];
       D.setActive(true, 32);
-      D.pos.set(-34, 12, 40);
-      D.segPos.forEach((sp, i) => sp.set(-34 - i, 12, 40 + i));
+      D.pos.set(-30, 12, 18);
+      D.segPos.forEach((sp, i) => sp.set(-30 - i, 12, 18));
       break;
     }
     case 'growl': audio.tone({ type: 'sawtooth', f0: 75, f1: 38, dur: 1.6, vol: 0.22, attack: 0.3, lp: 500 }); break;
@@ -1133,7 +1133,7 @@ function updateIntro(dt) {
   updateBlowhole(sdt, p);
   if (s.id === 'night') {
     // глубинник проплывает мимо светящегося Ковчега
-    introFake.pos.set(CUT.lerp(-24, 34, st.k), 11 + Math.sin(st.k * 6) * 2, CUT.lerp(34, 14, st.k));
+    introFake.pos.set(CUT.lerp(-26, 30, st.k), 12 + Math.sin(st.k * 6) * 1.5, CUT.lerp(16, 12, st.k));
     deeplings[0].update(sdt, introFake, ocean, true, 2.5);
   }
   if (s.id === 'task') updateNavigator(sdt);
@@ -1265,6 +1265,11 @@ function cameraEnv(dark) {
     scene.fog.color.set(0x0b3340).lerp(new THREE.Color(0x02080c), dark);
     scene.fog.near = 1;
     scene.fog.far = 55;
+    if (S.mode === 'intro') {
+      // в ролике под водой видно дальше: силуэт Матери и огни Ковчега
+      scene.fog.color.set(0x17566a).lerp(new THREE.Color(0x04141c), dark);
+      scene.fog.far = 170;
+    }
   } else {
     scene.fog.color.copy(fogDay);
     scene.fog.near = S.weather === 'fog' && S.mode !== 'menu' ? 2 : S.weather === 'storm' && S.mode !== 'menu' ? 30 : 90;

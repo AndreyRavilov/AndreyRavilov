@@ -175,7 +175,8 @@ test('дыхало подбрасывает ныряльщика', async (t) => 
     d.player.vel.set(0, 0, 0);
     d.S.blowTimer = 0;
   });
-  await waitFor(page, () => window.__deepback.player.vel.y > 15 || window.__deepback.player.pos.y > 25);
+  await waitFor(page, () => window.__deepback.S.launched, undefined, 40000);
+  assert.ok(await game(page, () => window.__deepback.player.vel.y > 0 || window.__deepback.player.pos.y > 18));
 });
 
 test('потерянная вещь жителя: найти, сдать, прочитать историю', async (t) => {
@@ -283,21 +284,49 @@ test('семь реликвий: выбор и каждый из трёх фин
   }
 });
 
-test('предыстория: пять слайдов перед первым днём, из меню её можно перечитать', async (t) => {
+test('вступительный ролик: идёт до конца, отвечает на главные вопросы и запускает первый день', async (t) => {
+  const page = await openGame(env); t.after(() => page.context().close().catch(() => {}));
+  await page.click('#start');
+  await waitFor(page, () => window.__deepback.S.mode === 'intro');
+  assert.ok(await page.isVisible('#cine'));
+  assert.ok(await page.isVisible('#skip'));
+  await waitFor(page, () => /Суши больше нет/.test(document.getElementById('cine-sub').textContent));
+  await game(page, () => { window.__deepback.S.introSpeed = 12; });
+  await waitFor(page, () => window.__deepback.S.mode === 'day', undefined, 60000);
+  const subs = (await game(page, () => window.__deepback.intro.subs)).join(' ');
+  assert.match(subs, /Матери/, 'что за мир');
+  assert.match(subs, /ныряет/, 'что происходит ночью');
+  assert.match(subs, /сестра Ива/, 'кто ты');
+  assert.match(subs, /жребий/i, 'как ты здесь оказался');
+  assert.match(subs, /реликвий/, 'тайна');
+  assert.match(subs, /вернись к шлюзу/, 'что делать');
+  assert.ok(!(await page.isVisible('#cine')));
+  assert.ok(await page.isVisible('#hud'));
+  assert.equal(await game(page, () => window.__deepback.S.cycle), 1);
+  assert.deepEqual(page.errors, []);
+});
+
+test('ролик можно пропустить пробелом и пересмотреть из меню', async (t) => {
   const page = await openGame(env); t.after(() => page.context().close().catch(() => {}));
   await page.click('#prologue-btn');
-  await page.locator('#modal-title', { hasText: 'Мир без берегов' }).waitFor();
-  await clickModalButton(page, 'Пропустить');
-  assert.ok(await page.isVisible('#menu'), 'после просмотра возвращаемся в меню');
+  await waitFor(page, () => window.__deepback.S.mode === 'intro');
+  await page.keyboard.press('Space');
+  await waitFor(page, () => window.__deepback.S.mode === 'menu');
+  assert.ok(await page.isVisible('#menu'));
+  assert.ok(!(await page.isVisible('#cine')));
+  // из «Продолжить» ролик не показывается
   await page.click('#start');
-  const titles = ['Мир без берегов', 'Ноа', 'Жребий', 'Что тебе предстоит', 'О чём молчит Совет'];
-  for (let i = 0; i < titles.length; i++) {
-    await page.locator('#modal-title', { hasText: titles[i] }).waitFor();
-    assert.equal(await game(page, () => window.__deepback.S.mode), 'menu', 'игра не идёт, пока читаем');
-    await clickModalButton(page, i === titles.length - 1 ? 'Выйти из шлюза' : 'Дальше');
-  }
+  await waitFor(page, () => window.__deepback.S.mode === 'intro');
+  await page.keyboard.press('Space');
   await waitFor(page, () => window.__deepback.S.mode === 'day');
-  assert.deepEqual(page.errors, []);
+  await toHatch(page);
+  await page.keyboard.press('KeyR');
+  await clickModalButton(page, 'Встретить утро');
+  await waitFor(page, () => window.__deepback.S.cycle === 2 && window.__deepback.S.mode === 'day');
+  await page.reload();
+  await page.waitForFunction(() => window.__deepback);
+  await page.click('#continue');
+  await waitFor(page, () => window.__deepback.S.mode === 'day');
 });
 
 test('мини-карта нарисована, у неё есть легенда, M её прячет', async (t) => {

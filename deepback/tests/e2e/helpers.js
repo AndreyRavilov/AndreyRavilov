@@ -37,7 +37,8 @@ export async function openGame(env, contextOptions = { viewport: { width: 1280, 
 
 export async function startNewRun(page) {
   await page.click('#start');
-  await clickModalButton(page, 'Пропустить'); // предыстория
+  await waitFor(page, () => window.__deepback.S.mode === 'intro');
+  await page.click('#skip'); // вступительный ролик
   await waitFor(page, () => window.__deepback.S.mode === 'day');
 }
 
