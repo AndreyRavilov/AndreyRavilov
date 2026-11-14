@@ -2,8 +2,9 @@
 // Файлы лежат в audio/vo/<id>.mp3. Строки, для которых файла ещё нет,
 // просто показываются субтитрами — игра от этого не ломается.
 
-// id сцены → длительность фразы в секундах (из ElevenLabs)
-export const VO = { deep: 4.8, reveal: 6.56, breath: 2.64, dive: 4.0, you: 7.28 };
+// id → длительность фразы в секундах (из ElevenLabs).
+// Сцены ролика: deep, reveal…; записи реликвий: relic1…relic7; финалы: ending-<key>.
+export const VO = { deep: 4.8, reveal: 6.56, breath: 2.64, dive: 4.0, night: 6.32, you: 7.28, relic: 6.08 };
 export const VO_LINES = Object.keys(VO);
 
 export class Voice {

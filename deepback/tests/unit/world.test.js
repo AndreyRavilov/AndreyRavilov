@@ -58,6 +58,15 @@ test('город с одинаковым сидом строится одина�
   assert.notDeepEqual(a.pickups.map((p) => p.x), c.pickups.map((p) => p.x));
 });
 
+test('постройки склеены в несколько сеток, припасы и пиявки остаются отдельными', () => {
+  const city = makeCity(8, 3);
+  const baked = city.group.children.filter((c) => c.userData.baked);
+  const loose = city.group.children.filter((c) => !c.userData.baked && !c.userData.dynamic);
+  assert.ok(baked.length > 3 && baked.length < 40, `склеенных сеток: ${baked.length}`);
+  assert.equal(loose.length, 0, 'неподвижные постройки должны быть склеены');
+  assert.equal(city.group.children.filter((c) => c.userData.dynamic).length, city.pickups.length + city.leeches.length);
+});
+
 test('в городе есть все виды припасов', () => {
   const city = makeCity(5);
   const types = new Set(city.pickups.map((p) => p.type));

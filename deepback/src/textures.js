@@ -154,16 +154,26 @@ export function rustyMetal(base = [92, 104, 110], size = 256) {
 // --- Кожа Матери: морщины, рубцы, пятна (серое — для bump и roughness) ---
 export function whaleSkin(size = 512) {
   const bump = paint(size, (u, v) => {
-    const wrinkle = Math.abs(Math.sin((v * 90 + fbm(u * 8, v * 8, 8, 3, 21) * 6) * Math.PI));
+    // редкие изогнутые складки, рвущиеся шумом
+    const warp = fbm(u * 4, v * 4, 4, 3, 21) * 3.5;
+    const fold = Math.abs(Math.sin((v * 22 + warp) * Math.PI));
+    const breakup = fbm(u * 10, v * 10, 10, 3, 25);
+    const wrinkle = Math.pow(fold, 6) * smoothstepJS(0.35, 0.75, breakup);
     const pores = fbm(u * 64, v * 64, 64, 2, 22);
-    const scar = Math.max(0, 1 - Math.abs(fbm(u * 3, v * 3, 3, 4, 23) - 0.5) * 30);
-    return clamp(110 + wrinkle * 60 + pores * 50 - scar * 70);
+    const blotch = fbm(u * 2, v * 2, 2, 4, 26);
+    const scar = Math.max(0, 1 - Math.abs(fbm(u * 3, v * 3, 3, 4, 23) - 0.5) * 40);
+    return clamp(120 - wrinkle * 70 + pores * 30 + blotch * 40 - scar * 60);
   });
   const rough = paint(size, (u, v) => {
     const wet = fbm(u * 5, v * 5, 5, 4, 24);
-    return clamp(140 + (wet - 0.5) * 160);
+    return clamp(120 + (wet - 0.5) * 200);
   });
   return { bump: finish(bump, 1, false), rough: finish(rough, 1, false) };
+}
+
+function smoothstepJS(a, b, x) {
+  const t = Math.max(0, Math.min(1, (x - a) / (b - a)));
+  return t * t * (3 - 2 * t);
 }
 
 // --- Мелкая волна для воды (карта высот, тайлится) ---
@@ -199,4 +209,19 @@ export function boxProjectUV(geo, metersPerTile = 3) {
   }
   uv.needsUpdate = true;
   return geo;
+}
+
+// Мягкое светящееся пятно для ореолов
+export function glowDot(size = 64) {
+  const c = canvas(size);
+  const ctx = c.getContext('2d');
+  const g = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+  g.addColorStop(0, 'rgba(255,255,255,0.9)');
+  g.addColorStop(0.25, 'rgba(255,255,255,0.45)');
+  g.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, size, size);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
 }

@@ -6,7 +6,7 @@ import * as THREE from 'three';
 import { WHALE } from './whale.js';
 
 const SIZE = 1600;
-const SEG = 220;
+const SEG = 180;
 const STEP = SIZE / SEG;
 
 const VERT = /* glsl */ `

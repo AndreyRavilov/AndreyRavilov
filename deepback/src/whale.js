@@ -71,7 +71,7 @@ export function buildWhale() {
   geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
   // UV — проекция сверху в метрах: текстура кожи лежит ровно, без стяжки у полюсов
   const uv = geo.attributes.uv;
-  for (let i = 0; i < pos.count; i++) uv.setXY(i, pos.getX(i) / 9, pos.getZ(i) / 9 + (pos.getY(i) < 0 ? pos.getY(i) / 9 : 0));
+  for (let i = 0; i < pos.count; i++) uv.setXY(i, pos.getX(i) / 16, pos.getZ(i) / 16 + (pos.getY(i) < 0 ? pos.getY(i) / 16 : 0));
   geo.computeVertexNormals();
   const skin = new THREE.MeshStandardMaterial({ vertexColors: true, color: 0x7d8c94, roughness: 0.78, metalness: 0.05 });
   const body = new THREE.Mesh(geo, skin);
@@ -130,30 +130,54 @@ export function buildWhale() {
   rim.position.set(BLOWHOLE.x, BLOWHOLE.y + 0.1, BLOWHOLE.z);
   g.add(rim);
 
-  // --- Ракушки-наросты ---
-  const barnGeo = new THREE.ConeGeometry(0.45, 0.6, 6);
-  const barnMat = new THREE.MeshStandardMaterial({ color: 0xb9b3a4, roughness: 1 });
-  const count = 900;
+  // --- Ракушки-наросты: «вулканчики» гроздьями ---
+  const barnGeo = new THREE.CylinderGeometry(0.16, 0.42, 0.38, 9, 1, true);
+  barnGeo.translate(0, 0.17, 0);
+  const capGeo = new THREE.CircleGeometry(0.16, 9);
+  capGeo.rotateX(-Math.PI / 2);
+  capGeo.translate(0, 0.36, 0);
+  const barnMat = new THREE.MeshStandardMaterial({ color: 0xb4ae9c, roughness: 0.95, side: THREE.DoubleSide });
+  const holeMat = new THREE.MeshStandardMaterial({ color: 0x1d2124, roughness: 1 });
+  const count = 1400;
   const barn = new THREE.InstancedMesh(barnGeo, barnMat, count);
+  const holes = new THREE.InstancedMesh(capGeo, holeMat, count);
   const m = new THREE.Matrix4();
   const q = new THREE.Quaternion();
   const sc = new THREE.Vector3();
   const p = new THREE.Vector3();
+  const up = new THREE.Vector3(0, 1, 0);
+  const nrm = new THREE.Vector3();
   let rs = 7;
   const rnd = () => ((rs = (rs * 16807) % 2147483647) / 2147483647);
-  for (let i = 0; i < count; i++) {
-    const th = rnd() * Math.PI * 2;
-    const u = 0.3 + rnd() * 0.69;
-    const { x, z } = pointOnBack(u, th);
-    p.set(x, backHeight(x, z) - 0.05, z);
-    const s = 0.5 + rnd() * 1.4;
-    sc.set(s, s * (0.6 + rnd()), s);
-    q.setFromEuler(new THREE.Euler((rnd() - 0.5) * 0.4, 0, (rnd() - 0.5) * 0.4));
-    m.compose(p, q, sc);
-    barn.setMatrixAt(i, m);
+  let i = 0;
+  while (i < count) {
+    // центр грозди
+    const cu = 0.25 + rnd() * 0.73;
+    const cth = rnd() * Math.PI * 2;
+    const c = pointOnBack(cu, cth);
+    const n = 4 + Math.floor(rnd() * 10);
+    for (let k = 0; k < n && i < count; k++) {
+      const x = c.x + (rnd() - 0.5) * 3.2;
+      const z = c.z + (rnd() - 0.5) * 3.2;
+      const h = backHeight(x, z);
+      if (!isFinite(h)) continue;
+      // наклон по нормали спины
+      const e = 0.2;
+      nrm.set(backHeight(x - e, z) - backHeight(x + e, z), 2 * e, backHeight(x, z - e) - backHeight(x, z + e)).normalize();
+      if (!isFinite(nrm.x)) nrm.copy(up);
+      q.setFromUnitVectors(up, nrm);
+      const s = 0.35 + rnd() * rnd() * 1.4;
+      sc.set(s, s * (0.7 + rnd() * 0.6), s);
+      p.set(x, h - 0.04, z);
+      m.compose(p, q, sc);
+      barn.setMatrixAt(i, m);
+      holes.setMatrixAt(i, m);
+      i++;
+    }
   }
   barn.receiveShadow = true;
-  g.add(barn);
+  barn.castShadow = true;
+  g.add(barn, holes);
 
   return g;
 }
@@ -163,7 +187,7 @@ export function dressWhale(whale, TEX) {
   const t = TEX.whaleSkin();
   const skin = whale.userData.skin;
   skin.bumpMap = t.bump;
-  skin.bumpScale = 3;
+  skin.bumpScale = 1.6;
   skin.roughnessMap = t.rough;
   skin.roughness = 0.85;
   skin.color.set(0x9aa8ae);

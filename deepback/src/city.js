@@ -3,6 +3,7 @@
 import * as THREE from 'three';
 import { WHALE, backHeight, backU, BLOWHOLE, pointOnBack } from './whale.js';
 import { boxProjectUV } from './textures.js';
+import { mergeGeometries } from '../vendor/addons/utils/BufferGeometryUtils.js';
 
 export const STEP = 0.7;
 export const HATCH = new THREE.Vector3(0, 0, 13);
@@ -32,7 +33,10 @@ const M = {
   leech: new THREE.MeshStandardMaterial({ color: 0x2b1631, roughness: 0.35, metalness: 0.2, emissive: 0x3a0d2a, emissiveIntensity: 0.4 }),
   leechEye: new THREE.MeshBasicMaterial({ color: 0xff5a7a }),
 };
+M.trim = new THREE.MeshStandardMaterial({ color: 0x2c2620, roughness: 0.85 });
 export const MATERIALS = M;
+// Текстура мягкого свечения задаётся из браузера (в Node её нет)
+export const GLOW = { tex: null };
 
 const WALLS = [0x6f5a46, 0x4f6b6a, 0x7a6a55, 0x5d4a3f, 0x3f5560, 0x8a6e4b, 0x5a5f4c];
 const ROOFS = [0x7a3b2a, 0x3d4b52, 0x5b4636, 0x2f3d3a];
@@ -77,6 +81,8 @@ export class City {
     this.staticColliders = [];
     this.pickups = [];
     this.leeches = [];
+    this.chimneys = [];
+    this.lamps = [];
     this.buildArk();
   }
 
@@ -122,6 +128,18 @@ export class City {
     this.beaconLight = new THREE.PointLight(0xffc070, 60, 70, 1.6);
     this.beaconLight.position.copy(beacon.position);
     g.add(this.beaconLight);
+    // вращающийся луч маяка — виден в сумерках и ночью
+    const beamGeo = new THREE.CylinderGeometry(0.25, 7, 70, 24, 1, true);
+    beamGeo.translate(0, 35, 0);
+    beamGeo.rotateZ(-Math.PI / 2 + 0.08);
+    this.beamMat = new THREE.MeshBasicMaterial({ color: 0xffd9a0, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: true });
+    this.beam = new THREE.Group();
+    this.beam.position.copy(beacon.position);
+    this.beam.add(new THREE.Mesh(beamGeo, this.beamMat));
+    const back = new THREE.Mesh(beamGeo, this.beamMat);
+    back.rotation.y = Math.PI;
+    this.beam.add(back);
+    g.add(this.beam);
 
     // зона шлюза
     const ring = new THREE.Mesh(new THREE.RingGeometry(2.1, 2.7, 40), M.hatch);
@@ -155,6 +173,8 @@ export class City {
     this.colliders = [...this.staticColliders];
     this.pickups = [];
     this.leeches = [];
+    this.chimneys = [];
+    this.lamps = [];
   }
 
   overlaps(x, z, r) {
@@ -201,6 +221,7 @@ export class City {
       const p = this.randomPoint(rng, 0.02, 0.8, 1.2);
       if (p) this.addLamp(p.x, p.z);
     }
+    this.addLines(rng);
     // Ящики
     for (let i = 0; i < 30; i++) {
       const p = this.randomPoint(rng, 0.05, 0.85, 1.4);
@@ -249,6 +270,38 @@ export class City {
       const p = this.randomPoint(rng, 0.55, 0.92, 1);
       if (p) this.addLeech(rng, p.x, p.z);
     }
+    this.bake();
+  }
+
+  // Неподвижные постройки склеиваются по материалам в несколько больших сеток:
+  // вместо тысячи отрисовок за кадр — пара десятков.
+  bake() {
+    const buckets = new Map();
+    const statics = this.group.children.filter((c) => !c.userData.dynamic);
+    this.group.updateMatrixWorld(true);
+    for (const obj of statics) {
+      obj.traverse((m) => {
+        if (!m.isMesh || m.isInstancedMesh) return;
+        let geo = m.geometry.index ? m.geometry.toNonIndexed() : m.geometry.clone();
+        for (const k of Object.keys(geo.attributes)) if (!['position', 'normal', 'uv', 'color'].includes(k)) geo.deleteAttribute(k);
+        if (!geo.attributes.uv) geo.setAttribute('uv', new THREE.Float32BufferAttribute(new Float32Array(geo.attributes.position.count * 2), 2));
+        geo.applyMatrix4(m.matrixWorld);
+        const key = `${m.material.uuid}|${geo.attributes.color ? 'c' : ''}`;
+        if (!buckets.has(key)) buckets.set(key, { mat: m.material, geos: [], shadow: m.castShadow });
+        buckets.get(key).geos.push(geo);
+      });
+    }
+    for (const obj of statics) this.group.remove(obj);
+    for (const { mat, geos, shadow } of buckets.values()) {
+      const merged = mergeGeometries(geos, false);
+      for (const g of geos) g.dispose();
+      if (!merged) continue;
+      const mesh = new THREE.Mesh(merged, mat);
+      mesh.castShadow = shadow;
+      mesh.receiveShadow = true;
+      mesh.userData.baked = true;
+      this.group.add(mesh);
+    }
   }
 
   groundAt(x, z, y = Infinity) {
@@ -294,19 +347,45 @@ export class City {
         const ch = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.45, 2.2, 8), M.rust);
         ch.position.set((rng() - 0.5) * w * 0.6, h + 1.3, (rng() - 0.5) * d * 0.6);
         g.add(ch);
+        this.chimneys.push({ x: x + ch.position.x, y: base + h + 2.45, z: z + ch.position.z });
       }
     }
     // дверь и окна
     const door = new THREE.Mesh(new THREE.BoxGeometry(1.2, 2.2, 0.2), M.dark);
     door.position.set(0, backHeight(x, z + hz) - base + 1.1, hz + 0.05);
     g.add(door);
+    // наличник и крылечко
+    for (const [fx, fy, fw, fh] of [[-0.68, 0, 0.16, 2.5], [0.68, 0, 0.16, 2.5], [0, 1.2, 1.52, 0.18]]) {
+      const tr = new THREE.Mesh(new THREE.BoxGeometry(fw, fh, 0.12), M.trim);
+      tr.position.set(fx, door.position.y + fy + (fy ? 0 : 0.1), hz + 0.12);
+      g.add(tr);
+    }
+    const step = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.3, 0.8), M.trim);
+    step.position.set(0, door.position.y - 1.15, hz + 0.4);
+    g.add(step);
     const winCount = 1 + Math.floor(rng() * 3);
     for (let i = 0; i < winCount; i++) {
-      const win = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.9, 0.15), M.window);
+      const wg = new THREE.Group();
       const side = rng() < 0.5 ? -1 : 1;
-      win.position.set(side * (hx + 0.03), h - 1.6 - rng() * 1.5, (rng() - 0.5) * (d - 1.5));
-      win.rotation.y = Math.PI / 2;
-      g.add(win);
+      wg.position.set(side * (hx + 0.03), h - 1.6 - rng() * 1.5, (rng() - 0.5) * (d - 1.5));
+      wg.rotation.y = side * Math.PI / 2;
+      const win = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.9, 0.12), M.window);
+      wg.add(win);
+      // рама с переплётом, подоконник, ставни
+      for (const [fx, fy, fw, fh] of [[0, 0.5, 1.12, 0.1], [0, -0.5, 1.2, 0.12], [-0.5, 0, 0.1, 1.1], [0.5, 0, 0.1, 1.1], [0, 0, 0.05, 0.9], [0, 0, 0.9, 0.05]]) {
+        const f = new THREE.Mesh(new THREE.BoxGeometry(fw, fh, 0.1), M.trim);
+        f.position.set(fx, fy, 0.06);
+        wg.add(f);
+      }
+      if (rng() < 0.5) {
+        for (const sx of [-0.78, 0.78]) {
+          const sh = new THREE.Mesh(new THREE.BoxGeometry(0.42, 1.05, 0.06), wallMats[Math.floor(rng() * wallMats.length)]);
+          sh.position.set(sx, 0, 0.05);
+          sh.rotation.y = sx * 0.4;
+          wg.add(sh);
+        }
+      }
+      g.add(wg);
     }
     shadow(g);
     this.group.add(g);
@@ -341,6 +420,7 @@ export class City {
     shadow(g);
     this.group.add(g);
     this.colliders.push({ type: 'box', minX: x - 0.2, maxX: x + 0.2, minZ: z - 0.2, maxZ: z + 0.2, bottom: y - 1, top: y + 4.2 });
+    this.lamps.push({ x: x + 1.0, y: y + 3.95, z });
   }
 
   addCrate(rng, x, z) {
@@ -418,13 +498,24 @@ export class City {
       const light = new THREE.PointLight(0x7ff6ff, 25, 18, 1.8);
       g.add(light);
     }
-    const halo = new THREE.Mesh(new THREE.SphereGeometry(type === 'relic' ? 1.5 : 1.0, 12, 8), M.glow);
-    halo.material = M.glow.clone();
-    halo.material.color.set({ food: 0xcff6ff, fuel: 0xffb070, scrap: 0xd0d6ff, relic: 0x80ffff, keepsake: 0xff9fc8 }[type]);
+    // мягкое свечение вокруг припаса (в браузере — с текстурой пятна)
+    const glowColor = { food: 0xcff6ff, fuel: 0xffb070, scrap: 0xd0d6ff, relic: 0x80ffff, keepsake: 0xff9fc8 }[type];
+    const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: GLOW.tex, color: glowColor, transparent: true, opacity: GLOW.tex ? 0.75 : 0.25, depthWrite: false, blending: THREE.AdditiveBlending }));
+    halo.scale.setScalar(type === 'relic' || type === 'keepsake' ? 4 : 2.6);
     g.add(halo);
+    // реликвия и вещь жителя видны издалека: столб света в небо
+    if (type === 'relic' || type === 'keepsake') {
+      const col = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.35, 0.9, 60, 12, 1, true).translate(0, 30, 0),
+        new THREE.MeshBasicMaterial({ color: glowColor, transparent: true, opacity: 0.16, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide })
+      );
+      col.position.y = -0.9;
+      g.add(col);
+    }
     const gy = y ?? this.groundAt(x, z);
     g.position.set(x, gy + 0.9, z);
-    g.traverse((c) => c.isMesh && c !== halo && (c.castShadow = true));
+    g.traverse((c) => c.isMesh && (c.castShadow = true));
+    g.userData.dynamic = true;
     this.group.add(g);
     this.pickups.push({ type, relicIndex, mesh: g, x, z, y: gy + 0.9, phase: Math.random() * 6, active: true });
   }
@@ -447,6 +538,7 @@ export class City {
     shadow(g);
     const y = backHeight(x, z);
     g.position.set(x, y + 0.3, z);
+    g.userData.dynamic = true;
     this.group.add(g);
     this.leeches.push({ mesh: g, segs, x, z, dir: rng() * Math.PI * 2, cool: 0, phase: rng() * 6, push: null });
   }
@@ -460,6 +552,7 @@ export function inside(c, x, z, r) {
 // Текстуры навешиваются только в браузере (в тестах под Node нет canvas).
 // TEX — модуль textures.js.
 export function dressMaterials(TEX) {
+  GLOW.tex = TEX.glowDot();
   WALLS.forEach((hex, i) => {
     const c = new THREE.Color(hex);
     const t = TEX.planks([Math.min(235, c.r * 255 * 1.75), Math.min(235, c.g * 255 * 1.75), Math.min(235, c.b * 255 * 1.75)]);
@@ -499,3 +592,71 @@ export function dressMaterials(TEX) {
   metal(M.arkDome, [128, 70, 48], 5, 2);
   metal(M.barrel, [170, 76, 40], 2, 1);
 }
+
+// Флажки и бельё на верёвках между соседними фонарями
+City.prototype.addLines = function (rng) {
+  const flagColors = [0xd9483b, 0xe8c547, 0x3f8fbf, 0xf2efe6, 0x4f9a63, 0xc7703a];
+  const clothColors = [0xf2efe6, 0xd8dde0, 0x9fb8c8, 0xc9b79a, 0xe7d3c0];
+  const ropeMat = new THREE.MeshStandardMaterial({ color: 0x3b3128, roughness: 1 });
+  const flagMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, side: THREE.DoubleSide });
+  const used = new Set();
+  const pos = [];
+  const col = [];
+  const c = new THREE.Color();
+  for (let i = 0; i < this.lamps.length; i++) {
+    let best = -1;
+    let bd = Infinity;
+    for (let j = 0; j < this.lamps.length; j++) {
+      if (i === j || used.has(`${Math.min(i, j)}-${Math.max(i, j)}`)) continue;
+      const d = Math.hypot(this.lamps[i].x - this.lamps[j].x, this.lamps[i].z - this.lamps[j].z);
+      if (d > 7 && d < 22 && d < bd) { bd = d; best = j; }
+    }
+    if (best < 0 || rng() < 0.25) continue;
+    used.add(`${Math.min(i, best)}-${Math.max(i, best)}`);
+    const a = this.lamps[i];
+    const b = this.lamps[best];
+    const sag = 0.6 + bd * 0.05;
+    const pts = [];
+    for (let k = 0; k <= 12; k++) {
+      const t = k / 12;
+      pts.push(new THREE.Vector3(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t - Math.sin(t * Math.PI) * sag, a.z + (b.z - a.z) * t));
+    }
+    const curve = new THREE.CatmullRomCurve3(pts);
+    const rope = new THREE.Mesh(new THREE.TubeGeometry(curve, 16, 0.025, 4), ropeMat);
+    this.group.add(rope);
+    const laundry = rng() < 0.35;
+    const n = Math.floor(bd / (laundry ? 1.4 : 0.75));
+    for (let k = 1; k < n; k++) {
+      const t = k / n;
+      const p = curve.getPoint(t);
+      const tan = curve.getTangent(t);
+      const side = new THREE.Vector3(tan.x, 0, tan.z).normalize();
+      if (laundry) {
+        if (rng() < 0.3) continue;
+        const w = 0.5 + rng() * 0.5;
+        const h = 0.5 + rng() * 0.6;
+        c.setHex(clothColors[Math.floor(rng() * clothColors.length)]);
+        const p0 = p.clone().addScaledVector(side, -w / 2);
+        const p1 = p.clone().addScaledVector(side, w / 2);
+        const quad = [p0, p1, p1.clone().setY(p1.y - h), p0, p1.clone().setY(p1.y - h), p0.clone().setY(p0.y - h)];
+        for (const q of quad) { pos.push(q.x, q.y, q.z); col.push(c.r, c.g, c.b); }
+      } else {
+        const w = 0.32;
+        c.setHex(flagColors[Math.floor(rng() * flagColors.length)]);
+        const p0 = p.clone().addScaledVector(side, -w / 2);
+        const p1 = p.clone().addScaledVector(side, w / 2);
+        const tip = p.clone().setY(p.y - 0.45);
+        for (const q of [p0, p1, tip]) { pos.push(q.x, q.y, q.z); col.push(c.r, c.g, c.b); }
+      }
+    }
+  }
+  if (pos.length) {
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+    geo.computeVertexNormals();
+    const flags = new THREE.Mesh(geo, flagMat);
+    flags.castShadow = true;
+    this.group.add(flags);
+  }
+};

@@ -35,34 +35,93 @@ export class Player {
     const glass = new THREE.MeshStandardMaterial({ color: 0x9fe8ff, emissive: 0x2a6a80, emissiveIntensity: 0.6, roughness: 0.05, metalness: 0.2 });
     const dark = new THREE.MeshStandardMaterial({ color: 0x2a2a2a, roughness: 0.8 });
 
-    const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.38, 0.6, 6, 12), suit);
-    body.position.y = 0.95;
-    g.add(body);
-    const helmet = new THREE.Mesh(new THREE.SphereGeometry(0.36, 18, 14), brass);
-    helmet.position.y = 1.62;
-    g.add(helmet);
-    const visor = new THREE.Mesh(new THREE.CircleGeometry(0.2, 16), glass);
-    visor.position.set(0, 1.62, -0.34);
-    visor.rotation.y = Math.PI;
-    g.add(visor);
-    const collar = new THREE.Mesh(new THREE.TorusGeometry(0.33, 0.07, 8, 18), brass);
-    collar.rotation.x = Math.PI / 2;
-    collar.position.y = 1.32;
-    g.add(collar);
-    for (const s of [-0.14, 0.14]) {
-      const tank = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.13, 0.7, 10), brass);
-      tank.position.set(s, 1.05, 0.38);
-      g.add(tank);
+    const leather = new THREE.MeshStandardMaterial({ color: 0x3a2a1e, roughness: 0.7 });
+    const iron = new THREE.MeshStandardMaterial({ color: 0x4a4e52, roughness: 0.5, metalness: 0.8 });
+    const lampMat = new THREE.MeshStandardMaterial({ color: 0xfff2c8, emissive: 0xffd080, emissiveIntensity: 2 });
+    suit.color.set(0xc9772c);
+    suit.roughness = 0.92;
+    const add = (geo, mat, x, y, z, parent = g) => {
+      const m = new THREE.Mesh(geo, mat);
+      m.position.set(x, y, z);
+      parent.add(m);
+      return m;
+    };
+
+    // торс: плотный холщовый костюм, ремень с латунной пряжкой
+    const torso = add(new THREE.CapsuleGeometry(0.36, 0.5, 6, 14), suit, 0, 1.0, 0);
+    torso.scale.set(1.05, 1, 0.9);
+    add(new THREE.TorusGeometry(0.36, 0.05, 8, 20), leather, 0, 0.78, 0).rotation.x = Math.PI / 2;
+    add(new THREE.BoxGeometry(0.12, 0.09, 0.05), brass, 0, 0.78, -0.35);
+    // нагрудник-манишка, на нём держится шлем
+    const corselet = add(new THREE.CylinderGeometry(0.3, 0.42, 0.22, 16), brass, 0, 1.36, 0);
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2;
+      add(new THREE.SphereGeometry(0.025, 6, 4), iron, Math.sin(a) * 0.36, 1.3, Math.cos(a) * 0.36);
     }
+    void corselet;
+
+    // шлем: латунная сфера, три иллюминатора с решётками, клапан сверху
+    const head = new THREE.Group();
+    head.position.y = 1.66;
+    g.add(head);
+    this.head = head;
+    add(new THREE.SphereGeometry(0.34, 22, 16), brass, 0, 0, 0, head);
+    const port = (x, z, ry, r) => {
+      const ring = add(new THREE.TorusGeometry(r, 0.035, 8, 20), brass, x, 0, z, head);
+      ring.rotation.y = ry;
+      const gl = add(new THREE.CircleGeometry(r, 18), glass, x * 0.99, 0, z * 0.99, head);
+      gl.rotation.y = ry + Math.PI;
+      for (const k of [-1, 0, 1]) {
+        const bar = add(new THREE.BoxGeometry(0.018, r * 2, 0.018), iron, x * 1.02 + Math.cos(ry) * k * r * 0.5, 0, z * 1.02 - Math.sin(ry) * k * r * 0.5, head);
+        bar.rotation.y = ry;
+      }
+    };
+    port(0, -0.32, 0, 0.15);
+    port(-0.31, -0.06, Math.PI / 2 - 0.15, 0.09);
+    port(0.31, -0.06, -Math.PI / 2 + 0.15, 0.09);
+    add(new THREE.CylinderGeometry(0.06, 0.08, 0.1, 10), brass, 0, 0.36, 0, head);
+    add(new THREE.CylinderGeometry(0.035, 0.035, 0.16, 8), brass, 0.12, 0.28, 0.2, head).rotation.x = 0.6;
+    // лампа над стеклом
+    add(new THREE.CylinderGeometry(0.06, 0.07, 0.12, 10), iron, 0, 0.27, -0.2, head).rotation.x = Math.PI / 2 - 0.4;
+    add(new THREE.CircleGeometry(0.05, 12), lampMat, 0, 0.29, -0.27, head).rotation.x = -0.4;
+
+    // руки
+    this.arms = [];
+    for (const s of [-1, 1]) {
+      const arm = new THREE.Group();
+      arm.position.set(s * 0.43, 1.25, 0);
+      g.add(arm);
+      add(new THREE.CapsuleGeometry(0.1, 0.42, 4, 8), suit, 0, -0.27, 0, arm);
+      add(new THREE.SphereGeometry(0.1, 10, 8), leather, 0, -0.58, 0, arm).scale.set(1, 1.2, 1);
+      add(new THREE.TorusGeometry(0.1, 0.025, 6, 14), brass, 0, -0.48, 0, arm).rotation.x = Math.PI / 2;
+      this.arms.push(arm);
+    }
+
+    // баллоны со шлангом и ремнями
+    for (const s of [-0.13, 0.13]) {
+      add(new THREE.CylinderGeometry(0.12, 0.12, 0.62, 14), brass, s, 1.05, 0.36);
+      add(new THREE.SphereGeometry(0.12, 12, 8), brass, s, 1.36, 0.36);
+      add(new THREE.CylinderGeometry(0.03, 0.03, 0.1, 8), iron, s, 1.5, 0.36);
+    }
+    add(new THREE.TorusGeometry(0.42, 0.03, 6, 20), leather, 0, 1.12, 0.05).rotation.x = Math.PI / 2;
+    const hose = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3([
+      new THREE.Vector3(0.13, 1.52, 0.36), new THREE.Vector3(0.2, 1.75, 0.3), new THREE.Vector3(0.24, 1.75, 0.05),
+    ]), 12, 0.03, 6), leather);
+    g.add(hose);
+
+    // ноги в тяжёлых ботинках с латунными носами
     this.legs = [];
     for (const s of [-0.16, 0.16]) {
-      const leg = new THREE.Mesh(new THREE.CapsuleGeometry(0.13, 0.45, 4, 8), dark);
-      leg.position.set(s, 0.35, 0);
+      const leg = new THREE.Group();
+      leg.position.set(s, 0.72, 0);
       g.add(leg);
+      add(new THREE.CapsuleGeometry(0.13, 0.38, 4, 8), suit, 0, -0.3, 0, leg);
+      add(new THREE.BoxGeometry(0.24, 0.16, 0.36), leather, 0, -0.63, -0.04, leg);
+      add(new THREE.BoxGeometry(0.25, 0.08, 0.12), brass, 0, -0.67, -0.2, leg);
       this.legs.push(leg);
     }
     const lamp = new THREE.SpotLight(0xfff0c8, 0, 30, 0.5, 0.5, 1.2);
-    lamp.position.set(0, 1.62, -0.3);
+    lamp.position.set(0, 1.95, -0.45);
     lamp.target.position.set(0, 1.0, -6);
     g.add(lamp, lamp.target);
     this.lamp = lamp;
@@ -250,6 +309,13 @@ export class Player {
     const sw = Math.sin(this.walkPhase) * Math.min(1, hs / 5) * 0.6;
     this.legs[0].rotation.x = sw;
     this.legs[1].rotation.x = -sw;
+    this.arms[0].rotation.x = -sw * 0.8;
+    this.arms[1].rotation.x = sw * 0.8;
+    // в воде руки гребут, на суше чуть разведены
+    const swim = this.swimming ? Math.sin(this.walkPhase * 1.3) * 0.9 : 0;
+    this.arms[0].rotation.z = -0.12 - Math.abs(swim) * 0.6;
+    this.arms[1].rotation.z = 0.12 + Math.abs(swim) * 0.6;
+    if (this.head) this.head.position.y = 1.66 + Math.abs(Math.sin(this.walkPhase)) * 0.02 * Math.min(1, hs / 5);
     this.mesh.position.copy(this.pos);
     let cur = this.mesh.rotation.y;
     let diff = this.facing - cur;

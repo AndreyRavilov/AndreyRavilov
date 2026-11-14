@@ -16,6 +16,7 @@ import { mulberry32 } from './city.js';
 import * as ECO from './economy.js';
 import * as TEX from './textures.js';
 import { createSkyMaterial, sunDirection, Post } from './graphics.js';
+import { Ambient } from './ambient.js';
 
 // ============ Рендер и сцена ============
 const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: false, powerPreference: 'high-performance' });
@@ -41,6 +42,8 @@ envScene.add(new THREE.Mesh(new THREE.SphereGeometry(100, 32, 16), skyMat));
 let envRT = null;
 let envKey = '';
 function updateEnvironment(p) {
+  if (S.noEnv) return;
+  S.envUpdates = (S.envUpdates || 0) + 1;
   const key = `${Math.round(p * 20)}|${S.weather}|${S.underK > 0.5 ? 'u' : 'a'}`;
   if (key === envKey) return;
   envKey = key;
@@ -86,6 +89,7 @@ const audio = new Audio();
 const voice = new Voice();
 const deeplings = [new Deepling(scene, 0.5), new Deepling(scene, 3.6)];
 const post = new Post(renderer, scene, camera);
+const ambient = new Ambient(scene);
 const sunDir = new THREE.Vector3();
 const URL_QUALITY = new URLSearchParams(location.search).get('quality');
 
@@ -302,6 +306,7 @@ function showModal({ title, body, buttons, wide = false }) {
     }
     el.onclick = () => {
       m.classList.add('hidden');
+      if (S.mode !== 'intro') voice.stop(); // закрыл запись — рассказчик замолкает
       b.onClick();
     };
     bb.appendChild(el);
@@ -507,6 +512,7 @@ function deposit() {
   for (const i of relics) {
     S.paused = true;
     showModal({ title: LORE[i].title, body: LORE[i].text, buttons: [{ label: 'Спрятать в журнал', onClick: () => { S.paused = false; lockPointer(); } }] });
+    voice.play(`relic${i + 1}`);
   }
 }
 
@@ -677,6 +683,7 @@ function showEndingChoice() {
           body: e.text + `\n\nДней прожито: ${S.cycle}. Выжило жителей: ${S.pop}.`,
           buttons: [{ label: 'Сыграть снова', onClick: startRun }],
         });
+        voice.play(`ending-${e.key}`);
       },
     })),
   });
@@ -777,6 +784,7 @@ function updateGame(dt) {
   updateLeeches(dt);
   updateDeeplings(dt);
   updateBlowhole(dt, p);
+  updateAmbient(dt, S.mode === 'day' ? p : 1);
 
   // тревоги
   const A = S.alarms;
@@ -1193,6 +1201,7 @@ function updateIntro(dt) {
     pk.mesh.position.y = pk.y + Math.sin(S.time * 2 + pk.phase) * 0.2;
   }
   updateBlowhole(sdt, p);
+  updateAmbient(sdt, p);
   if (s.id === 'night') {
     // глубинник проплывает мимо светящегося Ковчега
     introFake.pos.set(CUT.lerp(-26, 30, st.k), 21 + Math.sin(st.k * 6) * 1.5, CUT.lerp(18, 14, st.k));
@@ -1314,6 +1323,34 @@ function updateCamera(dt) {
   cameraEnv(Math.min(1, S.t / S.T));
 }
 
+// Чайки, дым, пузыри, брызги, луч маяка — общий для игры, ролика и меню
+function shorePoint() {
+  const L = ocean.level;
+  const u = L <= 0 ? 0.999 : 1 - Math.pow(Math.min(0.999, L / WHALE.H), 2);
+  const th = Math.random() * Math.PI * 2;
+  const r = Math.sqrt(u);
+  const z = WHALE.b * r * Math.sin(th);
+  const x = WHALE.a * (1 - 0.55 * (() => { const t = Math.min(1, Math.max(0, (z / WHALE.b - 0.3) / 0.7)); return t * t * (3 - 2 * t); })()) * r * Math.cos(th);
+  if (Math.hypot(x - camera.position.x, z - camera.position.z) > 90) return null;
+  return { x, y: L + 0.2, z };
+}
+function updateAmbient(dt, p) {
+  ambient.update(dt, {
+    time: S.time,
+    p,
+    camera,
+    player: S.mode === 'day' || S.mode === 'closing' ? player : null,
+    underK: S.underK || 0,
+    chimneys: city.chimneys,
+    weather: S.weather,
+    wind: world.wind,
+    surface: (x, z) => ocean.surfaceAt(x, z),
+    shore: shorePoint,
+  });
+  city.beam.rotation.y += dt * 0.5;
+  city.beamMat.opacity = Math.max(0, Math.min(1, (p - 0.45) / 0.3)) * 0.22 * (S.underK > 0.5 ? 0 : 1);
+}
+
 // Небо, солнце, туман и «подводность» вокруг текущей камеры
 function cameraEnv(dark) {
   sky.position.copy(camera.position);
@@ -1404,7 +1441,7 @@ if (saved && saved.pop > 0) {
 
 
 // для фона меню и для автотестов
-window.__deepback = { S, post, voice, intro, startIntro, endIntro, player, city, ocean, deeplings, rain, navDots, startRun, startDay, endDay, keys, pressed, setYaw: (v) => (yaw = v) };
+window.__deepback = { S, sky, envScene, whale, ambient, scene, post, voice, intro, startIntro, endIntro, player, city, ocean, deeplings, rain, navDots, startRun, startDay, endDay, keys, pressed, setYaw: (v) => (yaw = v) };
 
 // ============ Цикл ============
 const clock = new THREE.Clock();
@@ -1421,6 +1458,7 @@ function frame() {
     updateCamera(dt);
     camera.position.lerp(new THREE.Vector3(Math.sin(yaw) * 140, 55, Math.cos(yaw) * 140), 1);
     camera.lookAt(0, 6, 0);
+    updateAmbient(dt, 0.3);
   } else if (S.mode === 'intro') {
     updateIntro(dt);
   } else if ((S.mode === 'day' || S.mode === 'closing') && !S.paused) {

@@ -23,14 +23,18 @@ export async function setup() {
 
 // Открыть игру на чистом профиле; ошибки страницы собираются в page.errors
 export async function openGame(env, contextOptions = { viewport: { width: 1280, height: 720 } }) {
-  const context = await env.browser.newContext(contextOptions);
+  const { quality, ...ctxOptions } = contextOptions;
+  const context = await env.browser.newContext(ctxOptions);
   const page = await context.newPage();
+  page.setDefaultTimeout(60000);
+  page.setDefaultNavigationTimeout(90000);
   page.errors = [];
   page.on('pageerror', (e) => page.errors.push(e.message));
   page.on('console', (m) => {
     if (m.type() === 'error') page.errors.push(m.text());
   });
-  await page.goto(env.url);
+  // в тестах — низкое качество графики: программный рендер в CI медленный
+  await page.goto(quality === 'high' ? env.url : `${env.url}?quality=low`);
   await page.waitForFunction(() => window.__deepback && document.querySelector('canvas'));
   return page;
 }
@@ -42,7 +46,7 @@ export async function startNewRun(page) {
   await waitFor(page, () => window.__deepback.S.mode === 'day');
 }
 
-export function waitFor(page, fn, arg, timeout = 20000) {
+export function waitFor(page, fn, arg, timeout = 45000) {
   return page.waitForFunction(fn, arg, { timeout, polling: 50 });
 }
 

@@ -421,3 +421,21 @@ test('навигатор: пунктир ведёт к цели, Tab меняе�
   await game(page, () => { const d = window.__deepback; d.S.t = d.S.T * 0.8; });
   await waitFor(page, () => /Авто → Ковчег/.test(document.getElementById('nav-target').textContent));
 });
+
+test('высокое качество графики: свечение, сглаживание и тени работают без ошибок', async (t) => {
+  const page = await openGame(env, { viewport: { width: 960, height: 540 }, quality: 'high' });
+  t.after(() => page.context().close().catch(() => {}));
+  await startNewRun(page);
+  assert.equal(await game(page, () => window.__deepback.post.level), 'high');
+  assert.ok(await game(page, () => !!window.__deepback.post.composer));
+  // переключение качества на лету
+  await page.keyboard.press('KeyP');
+  await waitFor(page, () => window.__deepback.S.paused);
+  await page.selectOption('#set-quality', 'low');
+  await waitFor(page, () => window.__deepback.post.level === 'low' && !window.__deepback.post.composer);
+  await page.selectOption('#set-quality', 'medium');
+  await waitFor(page, () => window.__deepback.post.level === 'medium');
+  await page.click('#resume');
+  await page.waitForTimeout(500);
+  assert.deepEqual(page.errors, []);
+});

@@ -65,8 +65,9 @@ test('озвучка: файл есть для каждой объявленно
   const { VO, VO_LINES } = await import('../../src/voice.js');
   const fs = await import('node:fs');
   const ids = new Set(SHOTS.map((s) => s.id));
+  const extra = (id) => /^relic[1-7]$/.test(id) || /^ending-(rafts|heal|deep)$/.test(id);
   for (const id of VO_LINES) {
-    assert.ok(ids.has(id), `озвучка ${id} не привязана к сцене`);
+    assert.ok(ids.has(id) || extra(id), `озвучка ${id} ни к чему не привязана`);
     const file = new URL(`../../audio/vo/${id}.mp3`, import.meta.url);
     assert.ok(fs.existsSync(file), `нет файла audio/vo/${id}.mp3`);
     assert.ok(fs.statSync(file).size > 10000, `файл ${id}.mp3 подозрительно маленький`);
