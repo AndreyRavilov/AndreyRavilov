@@ -11,6 +11,7 @@ export const ITEM = {
   food: { name: 'Рыба', weight: 1, icon: '🐟' },
   fuel: { name: 'Бочка ворвани', weight: 3, icon: '🛢️' },
   relic: { name: 'Реликвия', weight: 1, icon: '◈' },
+  scrap: { name: 'Обломки', weight: 2, icon: '⚙️' },
 };
 
 const M = {
@@ -216,6 +217,11 @@ export class City {
       const p = this.randomPoint(rng, 0.15, 0.8, 1);
       if (p) this.addPickup('fuel', p.x, p.z);
     }
+    // Обломки для мастерской Ковчега
+    for (let i = 0; i < 7; i++) {
+      const p = this.randomPoint(rng, 0.3, 0.97, 1);
+      if (p) this.addPickup('scrap', p.x, p.z);
+    }
     // Реликвия: всегда в опасном месте
     if (relicIndex < relicTotal) {
       let p;
@@ -371,6 +377,16 @@ export class City {
       tail.rotation.x = Math.PI / 2;
       tail.position.z = 0.75;
       g.add(tail);
+    } else if (type === 'scrap') {
+      const gear = new THREE.Mesh(new THREE.TorusGeometry(0.45, 0.14, 6, 10), M.steel);
+      gear.rotation.x = 0.4;
+      g.add(gear);
+      for (let i = 0; i < 3; i++) {
+        const plate = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.08, 0.3), M.rust);
+        plate.position.set((i - 1) * 0.25, -0.2 + i * 0.12, (i % 2) * 0.2 - 0.1);
+        plate.rotation.set(i, i * 0.7, 0.3);
+        g.add(plate);
+      }
     } else if (type === 'fuel') {
       const b = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 1.2, 14), M.barrel);
       g.add(b);
@@ -389,7 +405,7 @@ export class City {
     }
     const halo = new THREE.Mesh(new THREE.SphereGeometry(type === 'relic' ? 1.5 : 1.0, 12, 8), M.glow);
     halo.material = M.glow.clone();
-    halo.material.color.set(type === 'food' ? 0xcff6ff : type === 'fuel' ? 0xffb070 : 0x80ffff);
+    halo.material.color.set({ food: 0xcff6ff, fuel: 0xffb070, scrap: 0xd0d6ff, relic: 0x80ffff }[type]);
     g.add(halo);
     const gy = y ?? this.groundAt(x, z);
     g.position.set(x, gy + 0.9, z);
@@ -417,7 +433,7 @@ export class City {
     const y = backHeight(x, z);
     g.position.set(x, y + 0.3, z);
     this.group.add(g);
-    this.leeches.push({ mesh: g, segs, x, z, dir: rng() * Math.PI * 2, cool: 0, phase: rng() * 6 });
+    this.leeches.push({ mesh: g, segs, x, z, dir: rng() * Math.PI * 2, cool: 0, phase: rng() * 6, push: null });
   }
 }
 

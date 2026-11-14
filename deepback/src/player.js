@@ -17,6 +17,13 @@ export class Player {
     this.oxygen = 1;
     this.carried = [];
     this.walkPhase = 0;
+    // параметры, которые меняют улучшения Ковчега
+    this.capacity = CAPACITY;
+    this.oxyTime = 22;
+    this.swimMul = 1;
+    this.walkMul = 1;
+    this.loadMul = 0.07;
+    this.swing = 0;
     this.mesh = this.build();
     scene.add(this.mesh);
   }
@@ -60,6 +67,21 @@ export class Player {
     g.add(lamp, lamp.target);
     this.lamp = lamp;
 
+    // гарпун-шест
+    const pole = new THREE.Group();
+    const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 2.2, 6), brass);
+    shaft.rotation.x = Math.PI / 2;
+    shaft.position.z = -1.1;
+    pole.add(shaft);
+    const tip = new THREE.Mesh(new THREE.ConeGeometry(0.1, 0.4, 6), new THREE.MeshStandardMaterial({ color: 0xdfe8ea, metalness: 0.9, roughness: 0.2 }));
+    tip.rotation.x = -Math.PI / 2;
+    tip.position.z = -2.3;
+    pole.add(tip);
+    pole.position.set(0.3, 1.1, 0);
+    pole.visible = false;
+    g.add(pole);
+    this.pole = pole;
+
     // груз на спине
     this.pack = new THREE.Group();
     this.pack.position.set(0, 1.5, 0.62);
@@ -67,6 +89,7 @@ export class Player {
     this.packMat = {
       food: new THREE.MeshStandardMaterial({ color: 0x9fc3d6, metalness: 0.5, roughness: 0.3 }),
       fuel: new THREE.MeshStandardMaterial({ color: 0xb4532a }),
+      scrap: new THREE.MeshStandardMaterial({ color: 0x8a96a0, metalness: 0.8, roughness: 0.4 }),
       relic: new THREE.MeshStandardMaterial({ color: 0xffe9a8, emissive: 0x5ff0ff, emissiveIntensity: 1.4 }),
     };
     g.traverse((c) => c.isMesh && (c.castShadow = true));
@@ -111,6 +134,10 @@ export class Player {
     if (input.has('KeyS') || input.has('ArrowDown')) iz += 1;
     if (input.has('KeyA')) ix -= 1;
     if (input.has('KeyD')) ix += 1;
+    if (!ix && !iz && world.axis) {
+      ix = world.axis.x;
+      iz = world.axis.z;
+    }
     const fx = -Math.sin(yaw);
     const fz = -Math.cos(yaw);
     const rx = Math.cos(yaw);
@@ -118,7 +145,7 @@ export class Player {
     let mx = rx * ix - fx * iz;
     let mz = rz * ix - fz * iz;
     const ml = Math.hypot(mx, mz);
-    if (ml > 0) {
+    if (ml > 1) {
       mx /= ml;
       mz /= ml;
     }
@@ -129,9 +156,9 @@ export class Player {
     this.headUnder = surface > this.pos.y + 1.65;
 
     const sprint = input.has('ShiftLeft') || input.has('ShiftRight');
-    const load = Math.max(0.45, 1 - 0.07 * this.weight);
-    let speed = (sprint ? 11 : 6.5) * load;
-    if (this.swimming) speed = (sprint ? 5.5 : 4) * Math.max(0.55, load);
+    const load = Math.max(0.45, 1 - this.loadMul * this.weight);
+    let speed = (sprint ? 11 : 6.5) * load * this.walkMul;
+    if (this.swimming) speed = (sprint ? 5.5 : 4) * Math.max(0.55, load) * this.swimMul;
 
     const accel = this.onGround ? 14 : this.swimming ? 4 : 3;
     const k = Math.min(1, accel * dt);
@@ -210,7 +237,7 @@ export class Player {
     }
 
     // --- кислород ---
-    if (this.headUnder) this.oxygen -= dt / 22;
+    if (this.headUnder) this.oxygen -= dt / this.oxyTime;
     else this.oxygen = Math.min(1, this.oxygen + dt / 3);
 
     // --- анимация ---
@@ -226,6 +253,13 @@ export class Player {
     diff = Math.atan2(Math.sin(diff), Math.cos(diff));
     this.mesh.rotation.y = cur + diff * Math.min(1, dt * 10);
     this.mesh.rotation.x = this.swimming ? -0.9 * Math.min(1, hs / 3) : 0;
+    // выпад гарпуном
+    if (this.swing > 0) {
+      this.swing -= dt;
+      const k = Math.sin(Math.max(0, this.swing) / 0.35 * Math.PI);
+      this.pole.visible = true;
+      this.pole.position.z = -k * 0.9;
+    } else this.pole.visible = false;
   }
 }
 

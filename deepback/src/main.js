@@ -5,6 +5,8 @@ import { City, HATCH, ITEM, MATERIALS } from './city.js';
 import { Player, CAPACITY } from './player.js';
 import { Audio } from './audio.js';
 import { INTRO, LORE, ENDINGS, NIGHT_LINES } from './lore.js';
+import { Deepling } from './creatures.js';
+import { UPGRADES, upgradeCost } from './upgrades.js';
 
 // ============ Рендер и сцена ============
 const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: false });
@@ -69,6 +71,7 @@ const ocean = new Ocean(scene);
 const city = new City(scene);
 const player = new Player(scene);
 const audio = new Audio();
+const deeplings = [new Deepling(scene, 0.5), new Deepling(scene, 3.6)];
 
 // фонтан из дыхала
 const BLOW_N = 400;
@@ -134,6 +137,9 @@ const S = {
   food: 3,
   fuel: 2,
   lore: 0,
+  scrap: 0,
+  up: {},
+  harpoonCd: 0,
   runSeed: Math.floor(Math.random() * 1e9),
   closing: 0,
   blowTimer: 12,
@@ -145,7 +151,7 @@ const S = {
   time: 0,
 };
 const dayLength = (c) => Math.max(100, 170 - (c - 1) * 10);
-const needFood = () => Math.ceil(S.pop / 4) + 1;
+const needFood = () => Math.max(1, Math.ceil(S.pop / 4) + 1 - (S.up.still || 0));
 const needFuel = () => Math.min(4, 1 + Math.floor(S.cycle / 2));
 
 // ============ Ввод ============
@@ -242,9 +248,10 @@ function updateHud() {
   $('food').textContent = S.food;
   $('fuel').textContent = S.fuel;
   $('lore').textContent = S.lore;
+  $('scrap').textContent = S.scrap;
   $('need').textContent = `На ночь нужно: 🐟 ${needFood()} · 🛢️ ${needFuel()}`;
   const w = player.weight;
-  $('cargo').innerHTML = `<span class="lbl">Груз ${w}/${CAPACITY}</span> ` + (player.carried.map((t) => `<span class="it ${t}">${ITEM[t].icon}</span>`).join('') || '<span class="empty">пусто</span>');
+  $('cargo').innerHTML = `<span class="lbl">Груз ${w}/${player.capacity}</span> ` + (player.carried.map((t) => `<span class="it ${t}">${ITEM[t].icon}</span>`).join('') || '<span class="empty">пусто</span>');
   $('oxy').classList.toggle('hidden', player.oxygen > 0.995 && !player.headUnder);
   $('oxybar').style.width = Math.max(0, player.oxygen) * 100 + '%';
   $('oxybar').className = player.oxygen < 0.3 ? 'danger' : '';
@@ -265,8 +272,41 @@ function startRun() {
   S.food = 3;
   S.fuel = 2;
   S.lore = 0;
+  S.scrap = 0;
+  S.up = {};
   S.runSeed = Math.floor(Math.random() * 1e9);
   startDay();
+}
+
+// ============ Сохранение ============
+const SAVE_KEY = 'deepback-save-v1';
+const SAVE_FIELDS = ['cycle', 'pop', 'food', 'fuel', 'lore', 'scrap', 'up', 'runSeed'];
+function saveGame() {
+  try {
+    const data = {};
+    for (const k of SAVE_FIELDS) data[k] = S[k];
+    localStorage.setItem(SAVE_KEY, JSON.stringify(data));
+  } catch (e) { /* хранилище недоступно — играем без сохранений */ }
+}
+function loadGame() {
+  try {
+    const raw = localStorage.getItem(SAVE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch (e) {
+    return null;
+  }
+}
+function clearSave() {
+  try { localStorage.removeItem(SAVE_KEY); } catch (e) { /* ignore */ }
+}
+
+function applyUpgrades() {
+  const u = S.up;
+  player.capacity = CAPACITY + 3 * (u.pack || 0);
+  player.oxyTime = 22 + 12 * (u.tank || 0);
+  player.swimMul = 1 + 0.3 * (u.fins || 0);
+  player.walkMul = 1 + 0.1 * (u.boots || 0);
+  player.loadMul = 0.07 - 0.02 * (u.boots || 0);
 }
 
 function startDay() {
@@ -277,18 +317,24 @@ function startDay() {
   S.blowing = 0;
   S.moanTimer = 4;
   S.alarms = {};
-  S.stats = { food: 0, fuel: 0, relics: [], deposits: 0 };
+  S.stats = { food: 0, fuel: 0, scrap: 0, relics: [], deposits: 0 };
+  S.harpoonCd = 0;
+  applyUpgrades();
+  saveGame();
   city.generate(S.runSeed + S.cycle * 1013, S.cycle, S.lore, LORE.length);
   const sp = new THREE.Vector3(HATCH.x, 0, HATCH.z + 6);
   sp.y = city.groundAt(sp.x, sp.z) + 0.1;
   player.reset(sp);
+  const nDeep = S.cycle >= 4 ? 2 : S.cycle >= 2 ? 1 : 0;
+  deeplings.forEach((d, i) => d.setActive(i < nDeep, W0));
   yaw = Math.PI;
   pitch = 0.35;
   S.mode = 'day';
   S.paused = false;
   $('hud').classList.remove('hidden');
   toast(`День ${S.cycle}. Мать всплыла. У тебя ${Math.round(S.T / 60 * 10) / 10} мин.`);
-  if (S.cycle === 2) toast('На спине завелись пиявки. Они срывают груз!', 'warn');
+  if (S.cycle === 2) toast('На спине завелись пиявки, а под водой кто-то светится. F — гарпун!', 'warn');
+  if (S.cycle === 4) toast('Глубинников стало двое.', 'danger');
   if (S.lore < LORE.length) toast('Где-то на опасном краю светится реликвия.', 'relic');
   canvas.requestPointerLock?.();
 }
@@ -302,6 +348,7 @@ function deposit() {
   for (const t of player.carried) {
     if (t === 'food') { S.food++; S.stats.food++; }
     else if (t === 'fuel') { S.fuel++; S.stats.fuel++; }
+    else if (t === 'scrap') { S.scrap++; S.stats.scrap++; }
     else if (t === 'relic') { relics.push(S.lore); S.lore++; S.stats.relics.push(S.lore - 1); }
   }
   player.carried = [];
@@ -341,7 +388,7 @@ function endDay(outcome) {
   S.fuel -= burn;
   const deaths = Math.min(S.pop, hunger + cold * 2);
   S.pop -= deaths;
-  lines.push(`Принесено за день: 🐟 ${S.stats.food} · 🛢️ ${S.stats.fuel}${S.stats.relics.length ? ' · ◈ реликвия' : ''}.`);
+  lines.push(`Принесено за день: 🐟 ${S.stats.food} · 🛢️ ${S.stats.fuel} · ⚙️ ${S.stats.scrap}${S.stats.relics.length ? ' · ◈ реликвия' : ''}.`);
   lines.push(`Ночью съедено 🐟 ${eatF}/${nf}, сожжено 🛢️ ${burn}/${nu}.`);
   if (hunger) lines.push(`Не хватило еды: ${hunger} ${plural(hunger, 'житель умер', 'жителя умерли', 'жителей умерли')} от голода.`);
   if (cold) lines.push(`Не хватило ворвани: в Ковчеге погас свет, ${cold * 2} ${plural(cold * 2, 'человек замёрз', 'человека замёрзли', 'человек замёрзли')}.`);
@@ -356,16 +403,74 @@ function endDay(outcome) {
         body: lines.join('\n\n') + `\n\nКовчег всплыл пустым. Когда-нибудь новые люди найдут спящую Мать — и на детском рисунке станет на один зачёркнутый круг больше.\n\nДней прожито: ${S.cycle}.`,
         buttons: [{ label: 'Начать заново', onClick: startRun }],
       });
+      clearSave();
     } else if (S.lore >= LORE.length) {
       showModal({ title: `Ночь ${S.cycle}`, body: lines.join('\n\n'), buttons: [{ label: 'Дальше', onClick: showEndingChoice }] });
     } else {
       showModal({
         title: `Ночь ${S.cycle}`,
-        body: lines.join('\n\n'),
+        body: nightBody(lines),
+        wide: true,
         buttons: [{ label: 'Встретить утро', onClick: () => { S.cycle++; startDay(); } }],
       });
+      S.cycle++;
+      saveGame(); // если закрыть вкладку ночью, утро начнётся с этого места
+      S.cycle--;
     }
   }, 900);
+}
+
+function nightBody(lines) {
+  const wrap = document.createElement('div');
+  for (const l of lines) {
+    const p = document.createElement('p');
+    p.textContent = l;
+    wrap.appendChild(p);
+  }
+  const h = document.createElement('h3');
+  h.textContent = 'Мастерская Ковчега';
+  wrap.appendChild(h);
+  const bal = document.createElement('p');
+  wrap.appendChild(bal);
+  const grid = document.createElement('div');
+  grid.className = 'shop';
+  wrap.appendChild(grid);
+  const render = () => {
+    bal.textContent = `Обломков: ⚙️ ${S.scrap}. Улучшения остаются до конца забега.`;
+    grid.innerHTML = '';
+    for (const up of UPGRADES) {
+      const lvl = S.up[up.key] || 0;
+      const cost = upgradeCost(up, lvl);
+      const card = document.createElement('div');
+      card.className = 'up';
+      const pips = '●'.repeat(lvl) + '○'.repeat(up.max - lvl);
+      card.innerHTML = `<div class="up-h"><b></b><span class="pips">${pips}</span></div><small></small>`;
+      card.querySelector('b').textContent = up.name;
+      card.querySelector('small').textContent = up.desc;
+      const btn = document.createElement('button');
+      if (cost === null) {
+        btn.textContent = 'Максимум';
+        btn.disabled = true;
+      } else {
+        btn.textContent = `Купить · ⚙️ ${cost}`;
+        btn.disabled = S.scrap < cost;
+        btn.onclick = () => {
+          if (S.scrap < cost) return;
+          S.scrap -= cost;
+          S.up[up.key] = lvl + 1;
+          audio.deposit();
+          S.cycle++;
+          saveGame();
+          S.cycle--;
+          render();
+        };
+      }
+      card.appendChild(btn);
+      grid.appendChild(card);
+    }
+  };
+  render();
+  return wrap;
 }
 
 function showEndingChoice() {
@@ -376,12 +481,14 @@ function showEndingChoice() {
     buttons: ENDINGS.map((e) => ({
       label: e.title,
       sub: e.choice,
-      onClick: () =>
+      onClick: () => {
+        clearSave();
         showModal({
           title: `Финал: ${e.title}`,
           body: e.text + `\n\nДней прожито: ${S.cycle}. Выжило жителей: ${S.pop}.`,
           buttons: [{ label: 'Сыграть снова', onClick: startRun }],
-        }),
+        });
+      },
     })),
   });
 }
@@ -416,6 +523,7 @@ const world = {
   ocean,
   current: 0,
   groundAt: (x, z, y) => city.groundAt(x, z, y),
+  axis: null,
 };
 
 function nearestPickup() {
@@ -454,7 +562,7 @@ function updateGame(dt) {
   let prompt = '';
   if (near) {
     const it = ITEM[near.type];
-    prompt = player.weight + it.weight > CAPACITY ? `${it.name}: слишком тяжело (груз ${player.weight}/${CAPACITY})` : `<b>E</b> — подобрать: ${it.name}`;
+    prompt = player.weight + it.weight > player.capacity ? `${it.name}: слишком тяжело (груз ${player.weight}/${player.capacity})` : `<b>E</b> — подобрать: ${it.name}`;
   } else if (hatch) {
     prompt = `<b>E</b> — сдать груз · <b>R</b> — укрыться в Ковчеге и закончить день`;
   }
@@ -463,7 +571,7 @@ function updateGame(dt) {
   if (pressed.has('KeyE')) {
     if (near) {
       const it = ITEM[near.type];
-      if (player.weight + it.weight <= CAPACITY) {
+      if (player.weight + it.weight <= player.capacity) {
         near.active = false;
         near.mesh.visible = false;
         player.carried.push(near.type);
@@ -482,7 +590,9 @@ function updateGame(dt) {
     pk.mesh.position.y = pk.y + Math.sin(S.time * 2 + pk.phase) * 0.2;
   }
 
+  updateHarpoon(dt);
   updateLeeches(dt);
+  updateDeeplings(dt);
   updateBlowhole(dt, p);
 
   // тревоги
@@ -522,8 +632,16 @@ function updateLeeches(dt) {
     const dx = player.pos.x - L.x;
     const dz = player.pos.z - L.z;
     const d = Math.hypot(dx, dz);
+    if (L.push) {
+      L.push.t -= dt;
+      const nx = L.x + L.push.x * 14 * dt;
+      const nz = L.z + L.push.z * 14 * dt;
+      if (backU(nx, nz) < 0.97 && !city.overlaps(nx, nz, 0.3)) { L.x = nx; L.z = nz; }
+      if (L.push.t <= 0) L.push = null;
+    }
     let speed = 1.2;
-    if (d < 26 && Math.abs(player.pos.y - ly) < 6 && L.cool <= 0) {
+    if (L.push) speed = 0;
+    else if (d < 26 && Math.abs(player.pos.y - ly) < 6 && L.cool <= 0) {
       L.dir = Math.atan2(dx, dz);
       speed = 2.6 + S.cycle * 0.3;
     } else {
@@ -558,6 +676,56 @@ function updateLeeches(dt) {
         city.addPickup(t, px, pz, -1, city.groundAt(px, pz, player.pos.y + 2));
         toast(`Пиявка сорвала с тебя: ${ITEM[t].name}!`, 'warn');
       } else toast('Пиявка! Держись от них подальше.', 'warn');
+    }
+  }
+}
+
+const HARPOON_CD = [1.6, 1.1, 0.7];
+function updateHarpoon(dt) {
+  S.harpoonCd -= dt;
+  if (!pressed.has('KeyF') || S.harpoonCd > 0) return;
+  const lvl = S.up.harpoon || 0;
+  S.harpoonCd = HARPOON_CD[lvl];
+  player.swing = 0.35;
+  audio.tone({ type: 'triangle', f0: 300, f1: 120, dur: 0.18, vol: 0.12 });
+  const range = 3.6 + lvl * 0.8;
+  // бьём туда, куда смотрит камера, и разворачиваем ныряльщика
+  const fx = -Math.sin(yaw);
+  const fz = -Math.cos(yaw);
+  player.facing = yaw;
+  player.mesh.rotation.y = yaw;
+  let hit = 0;
+  for (const L of city.leeches) {
+    const dx = L.x - player.pos.x;
+    const dz = L.z - player.pos.z;
+    const d = Math.hypot(dx, dz);
+    if (d > range || Math.abs(L.mesh.position.y - player.pos.y) > 2.5) continue;
+    if (d > 1 && (dx * fx + dz * fz) / d < 0.2) continue;
+    L.push = { x: dx / (d || 1), z: dz / (d || 1), t: 0.45 };
+    L.cool = 3;
+    hit++;
+  }
+  for (const D of deeplings) {
+    if (!D.active) continue;
+    if (D.pos.distanceTo(player.pos) < range + 2.5) {
+      D.scare();
+      toast('Глубинник получил гарпуном и уплыл!', 'ok');
+      hit++;
+    }
+  }
+  if (hit) audio.hit();
+}
+
+function updateDeeplings(dt) {
+  for (const D of deeplings) {
+    const r = D.update(dt, player, ocean, S.mode === 'closing', S.cycle * 0.15 - (S.up.fins || 0) * 0.2);
+    if (r === 'bite') {
+      player.oxygen -= 0.3;
+      const away = player.pos.clone().sub(D.pos).setY(0).normalize();
+      player.vel.addScaledVector(away, 9);
+      audio.tone({ type: 'sawtooth', f0: 90, f1: 40, dur: 0.6, vol: 0.25, lp: 600 });
+      audio.hit();
+      toast('Глубинник укусил! Кислород утекает — плыви к поверхности!', 'danger');
     }
   }
 }
@@ -642,15 +810,97 @@ function updateCamera(dt) {
 
 // ============ Меню ============
 $('intro').textContent = INTRO;
-$('start').addEventListener('click', () => {
+function leaveMenu() {
   audio.init();
   audio.resume();
   $('menu').classList.add('hidden');
+}
+$('start').addEventListener('click', () => {
+  leaveMenu();
   startRun();
 });
+const saved = loadGame();
+if (saved && saved.pop > 0) {
+  $('continue').classList.remove('hidden');
+  $('continue').textContent = `ПРОДОЛЖИТЬ · ДЕНЬ ${saved.cycle}`;
+  $('start').textContent = 'НОВЫЙ ЗАБЕГ';
+  $('start').classList.add('secondary');
+  $('continue').addEventListener('click', () => {
+    leaveMenu();
+    for (const k of SAVE_FIELDS) if (k in saved) S[k] = saved[k];
+    S.up = S.up || {};
+    startDay();
+  });
+}
+
+// ============ Сенсорное управление ============
+const isTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+if (isTouch) {
+  document.body.classList.add('touch');
+  $('touch').classList.remove('hidden');
+  const stick = $('stick');
+  const knob = $('knob');
+  let stickId = null;
+  let lookId = null;
+  let lastX = 0;
+  let lastY = 0;
+  const setStick = (t) => {
+    const r = stick.getBoundingClientRect();
+    let dx = t.clientX - (r.left + r.width / 2);
+    let dy = t.clientY - (r.top + r.height / 2);
+    const max = r.width / 2;
+    const l = Math.hypot(dx, dy);
+    if (l > max) { dx *= max / l; dy *= max / l; }
+    knob.style.transform = `translate(${dx}px, ${dy}px)`;
+    world.axis = { x: dx / max, z: dy / max };
+  };
+  stick.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    const t = e.changedTouches[0];
+    stickId = t.identifier;
+    setStick(t);
+  }, { passive: false });
+  canvas.addEventListener('touchstart', (e) => {
+    const t = e.changedTouches[0];
+    if (lookId === null) { lookId = t.identifier; lastX = t.clientX; lastY = t.clientY; }
+    audio.resume();
+  }, { passive: true });
+  addEventListener('touchmove', (e) => {
+    for (const t of e.changedTouches) {
+      if (t.identifier === stickId) setStick(t);
+      else if (t.identifier === lookId) {
+        yaw -= (t.clientX - lastX) * 0.006;
+        pitch = Math.max(-0.45, Math.min(1.25, pitch + (t.clientY - lastY) * 0.006));
+        lastX = t.clientX;
+        lastY = t.clientY;
+      }
+    }
+  }, { passive: true });
+  const end = (e) => {
+    for (const t of e.changedTouches) {
+      if (t.identifier === stickId) { stickId = null; world.axis = null; knob.style.transform = ''; }
+      if (t.identifier === lookId) lookId = null;
+    }
+  };
+  addEventListener('touchend', end);
+  addEventListener('touchcancel', end);
+  for (const btn of document.querySelectorAll('#tbtns button')) {
+    const k = btn.dataset.k;
+    btn.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      if (k === 'KeyJ') { if (S.mode === 'day' && !S.paused) showJournal(); return; }
+      keys.add(k);
+      pressed.add(k);
+      btn.classList.add('on');
+    }, { passive: false });
+    const up = (e) => { e.preventDefault(); keys.delete(k); btn.classList.remove('on'); };
+    btn.addEventListener('touchend', up);
+    btn.addEventListener('touchcancel', up);
+  }
+}
 
 // для фона меню и для автотестов
-window.__deepback = { S, player, city, ocean, startRun, endDay, keys, setYaw: (v) => (yaw = v) };
+window.__deepback = { S, player, city, ocean, deeplings, startRun, endDay, keys, pressed, setYaw: (v) => (yaw = v) };
 
 // ============ Цикл ============
 const clock = new THREE.Clock();
