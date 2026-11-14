@@ -111,6 +111,7 @@
   .settings { display: grid; gap: 8px; margin: 6px 0 20px; font-size: 14px; color: var(--muted); }
   .settings output { color: var(--ink); font-weight: 800; margin-left: 6px; }
   .settings input[type=range] { width: 100%; accent-color: var(--accent); }
+  .settings select { font: inherit; padding: 8px; border-radius: 8px; background: rgba(255,255,255,.06); color: var(--ink); border: 1px solid var(--line); }
   .settings .check { display: flex; gap: 8px; align-items: center; margin-top: 4px; }
   .desktop-note { font-size: 13px; color: var(--muted) !important; margin-top: 14px !important; }
   .hint { font-size: 13px; color: var(--muted) !important; margin-top: 14px !important; }
@@ -223,6 +224,12 @@
       <label for="set-sens">Чувствительность камеры <output id="sens-out">1.0</output></label>
       <input id="set-sens" type="range" min="0.3" max="2.5" step="0.1" value="1" />
       <label class="check"><input id="set-invert" type="checkbox" /> Инвертировать вертикаль</label>
+      <label for="set-quality">Графика</label>
+      <select id="set-quality">
+        <option value="high">Высокое качество: свечение, сглаживание, мягкие тени</option>
+        <option value="medium">Среднее: без сглаживания, тени попроще</option>
+        <option value="low">Низкое: для слабых компьютеров</option>
+      </select>
     </div>
     <div class="menu-btns">
       <button id="resume">ПРОДОЛЖИТЬ</button>

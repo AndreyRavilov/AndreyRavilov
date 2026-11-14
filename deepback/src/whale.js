@@ -56,7 +56,7 @@ export function buildWhale() {
     if (y > -0.25) {
       const n = n3(x * 6, y * 6, z * 14);
       const scar = Math.abs(Math.sin(x * 23 + z * 41 + Math.sin(z * 9) * 3)) > 0.985;
-      c.setHSL(0.58, 0.22, 0.09 + n * 0.035);
+      c.setHSL(0.57, 0.2, 0.14 + n * 0.045);
       if (scar) c.setHSL(0.55, 0.1, 0.3);
       if (n > 0.45) c.offsetHSL(0, -0.06, 0.05); // светлые пятна
     } else {
@@ -69,9 +69,13 @@ export function buildWhale() {
     colors[i * 3 + 2] = c.b;
   }
   geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  // UV — проекция сверху в метрах: текстура кожи лежит ровно, без стяжки у полюсов
+  const uv = geo.attributes.uv;
+  for (let i = 0; i < pos.count; i++) uv.setXY(i, pos.getX(i) / 9, pos.getZ(i) / 9 + (pos.getY(i) < 0 ? pos.getY(i) / 9 : 0));
   geo.computeVertexNormals();
   const skin = new THREE.MeshStandardMaterial({ vertexColors: true, color: 0x7d8c94, roughness: 0.78, metalness: 0.05 });
   const body = new THREE.Mesh(geo, skin);
+  g.userData.skin = skin;
   body.receiveShadow = true;
   g.add(body);
 
@@ -152,4 +156,16 @@ export function buildWhale() {
   g.add(barn);
 
   return g;
+}
+
+// Морщины, рубцы и влажный блеск кожи (только в браузере)
+export function dressWhale(whale, TEX) {
+  const t = TEX.whaleSkin();
+  const skin = whale.userData.skin;
+  skin.bumpMap = t.bump;
+  skin.bumpScale = 3;
+  skin.roughnessMap = t.rough;
+  skin.roughness = 0.85;
+  skin.color.set(0x9aa8ae);
+  skin.needsUpdate = true;
 }

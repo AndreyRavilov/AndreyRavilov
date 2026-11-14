@@ -3,7 +3,7 @@
 // просто показываются субтитрами — игра от этого не ломается.
 
 // id сцены → длительность фразы в секундах (из ElevenLabs)
-export const VO = { deep: 4.8, breath: 2.64, dive: 4.0, you: 7.28 };
+export const VO = { deep: 4.8, reveal: 6.56, breath: 2.64, dive: 4.0, you: 7.28 };
 export const VO_LINES = Object.keys(VO);
 
 export class Voice {

@@ -1,7 +1,7 @@
 import * as THREE from 'three';
-import { buildWhale, backHeight, backU, BLOWHOLE, WHALE } from './whale.js';
+import { buildWhale, dressWhale, backHeight, backU, BLOWHOLE, WHALE } from './whale.js';
 import { Ocean } from './ocean.js';
-import { City, HATCH, ITEM, MATERIALS } from './city.js';
+import { City, HATCH, ITEM, MATERIALS, dressMaterials } from './city.js';
 import { Player, CAPACITY } from './player.js';
 import { Audio } from './audio.js';
 import { INTRO, LORE, ENDINGS, NIGHT_LINES } from './lore.js';
@@ -14,38 +14,41 @@ import { UPGRADES, upgradeCost } from './upgrades.js';
 import { RESIDENTS, ICON, makeQuest, WEATHER, rollWeather } from './residents.js';
 import { mulberry32 } from './city.js';
 import * as ECO from './economy.js';
+import * as TEX from './textures.js';
+import { createSkyMaterial, sunDirection, Post } from './graphics.js';
 
 // ============ Рендер и сцена ============
-const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: false });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: false, powerPreference: 'high-performance' });
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.05;
+renderer.toneMappingExposure = 1.12;
 document.getElementById('app').appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(62, window.innerWidth / window.innerHeight, 0.1, 2500);
 scene.fog = new THREE.Fog(0xa9c8d0, 90, 700);
 
-const skyMat = new THREE.ShaderMaterial({
-  uniforms: {
-    top: { value: new THREE.Color(0x4a90b8) },
-    horizon: { value: new THREE.Color(0xcfe3e8) },
-    under: { value: new THREE.Color(0x0b2a35) },
-  },
-  vertexShader: `varying vec3 vP; void main(){ vP = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`,
-  fragmentShader: `uniform vec3 top; uniform vec3 horizon; uniform vec3 under; varying vec3 vP;
-    void main(){ float h = vP.y; vec3 c = h > 0.0 ? mix(horizon, top, pow(h, 0.55)) : mix(horizon, under, min(1.0, -h * 5.0));
-    gl_FragColor = vec4(c, 1.0);
-    #include <colorspace_fragment>
-    }`,
-  side: THREE.BackSide,
-  depthWrite: false,
-  fog: false,
-});
+const skyMat = createSkyMaterial(TEX.cloudNoise());
 const sky = new THREE.Mesh(new THREE.SphereGeometry(1500, 32, 16), skyMat);
+
+// Освещение от неба: небо рендерится в карту окружения, и все материалы
+// получают мягкий цветной свет и отражения. Пересчитывается по мере смены времени суток.
+const pmrem = new THREE.PMREMGenerator(renderer);
+const envScene = new THREE.Scene();
+envScene.add(new THREE.Mesh(new THREE.SphereGeometry(100, 32, 16), skyMat));
+let envRT = null;
+let envKey = '';
+function updateEnvironment(p) {
+  const key = `${Math.round(p * 20)}|${S.weather}|${S.underK > 0.5 ? 'u' : 'a'}`;
+  if (key === envKey) return;
+  envKey = key;
+  if (envRT) envRT.dispose();
+  envRT = pmrem.fromScene(envScene, 0.04);
+  scene.environment = envRT.texture;
+}
+scene.environmentIntensity = 0.75;
 sky.renderOrder = -1;
 scene.add(sky);
 
@@ -63,7 +66,7 @@ const starMat = new THREE.PointsMaterial({ color: 0xffffff, size: 2.2, sizeAtten
 const stars = new THREE.Points(starGeo, starMat);
 scene.add(stars);
 
-const hemi = new THREE.HemisphereLight(0xbfd8e6, 0x2a3a40, 0.9);
+const hemi = new THREE.HemisphereLight(0xbfd8e6, 0x2a3a40, 0.5);
 scene.add(hemi);
 const sun = new THREE.DirectionalLight(0xfff0d8, 2.4);
 sun.castShadow = true;
@@ -74,12 +77,17 @@ scene.add(sun, sun.target);
 
 const whale = buildWhale();
 scene.add(whale);
-const ocean = new Ocean(scene);
+const ocean = new Ocean(scene, { detail: TEX.waveDetail() });
+dressWhale(whale, TEX);
+dressMaterials(TEX);
 const city = new City(scene);
 const player = new Player(scene);
 const audio = new Audio();
 const voice = new Voice();
 const deeplings = [new Deepling(scene, 0.5), new Deepling(scene, 3.6)];
+const post = new Post(renderer, scene, camera);
+const sunDir = new THREE.Vector3();
+const URL_QUALITY = new URLSearchParams(location.search).get('quality');
 
 // фонтан из дыхала
 const BLOW_N = 400;
@@ -130,9 +138,9 @@ scene.add(rain);
 
 // ============ Палитры времени суток ============
 const PAL = {
-  day: { top: 0x4a90b8, hor: 0xd4e6ea, fog: 0xa9c8d0, sun: 0xfff0d8, sunI: 2.4, hemi: 0.95, water: 0x1d6275 },
-  dusk: { top: 0x2b3566, hor: 0xf09060, fog: 0x9a6f6a, sun: 0xff9a60, sunI: 1.4, hemi: 0.6, water: 0x284b66 },
-  night: { top: 0x04060e, hor: 0x18283a, fog: 0x0c1620, sun: 0x8090ff, sunI: 0.35, hemi: 0.22, water: 0x0d2533 },
+  day: { top: 0x3f86b8, hor: 0xd8e8ea, fog: 0xa9c8d0, sun: 0xfff0d8, sunI: 2.6, hemi: 0.85, water: 0x0f4a5c, shallow: 0x2f9a90 },
+  dusk: { top: 0x2b3566, hor: 0xf3a06a, fog: 0x9a6f6a, sun: 0xff9050, sunI: 1.6, hemi: 0.55, water: 0x1c3e58, shallow: 0x3f7f86 },
+  night: { top: 0x03050c, hor: 0x16263a, fog: 0x0c1620, sun: 0x8090ff, sunI: 0.3, hemi: 0.2, water: 0x07202c, shallow: 0x123c46 },
 };
 const tmpA = new THREE.Color();
 const tmpB = new THREE.Color();
@@ -150,10 +158,22 @@ function applyTime(p) {
   mixHex(a.hor, b.hor, t, skyMat.uniforms.horizon.value);
   mixHex(a.fog, b.fog, t, fogDay);
   mixHex(a.sun, b.sun, t, sun.color);
-  mixHex(a.water, b.water, t, ocean.mat.color);
+  mixHex(a.water, b.water, t, ocean.mat.uniforms.uDeep.value);
+  mixHex(a.shallow, b.shallow, t, ocean.mat.uniforms.uShallow.value);
+  sunDirection(p, sunDir);
+  skyMat.uniforms.uSunDir.value.copy(sunDir);
+  skyMat.uniforms.uSunColor.value.copy(sun.color);
+  skyMat.uniforms.uTime.value = S.time;
+  ocean.mat.uniforms.uSunDir.value.copy(sunDir);
+  ocean.mat.uniforms.uSunColor.value.copy(sun.color).multiplyScalar(Math.max(0, Math.min(1, sunDir.y * 6 + 0.2)));
+  ocean.mat.uniforms.uSky.value.copy(skyMat.uniforms.horizon.value).lerp(skyMat.uniforms.top.value, 0.35);
+  const W = S.weather;
+  skyMat.uniforms.uCover.value = W === 'storm' ? 0.9 : W === 'fog' ? 0.75 : W === 'calm' ? 0.22 : 0.42;
+  skyMat.uniforms.uCloudDark.value = W === 'storm' ? 0.75 : W === 'fog' ? 0.2 : 0;
   sun.intensity = THREE.MathUtils.lerp(a.sunI, b.sunI, t);
   hemi.intensity = THREE.MathUtils.lerp(a.hemi, b.hemi, t);
   starMat.opacity = Math.max(0, (p - 0.6) / 0.4);
+  hemi.intensity *= 0.55;
   MATERIALS.window.emissiveIntensity = 0.3 + p * 2.2;
   MATERIALS.lamp.emissiveIntensity = 1 + p * 3;
 }
@@ -315,7 +335,7 @@ addEventListener('keydown', (e) => {
 
 // ============ Настройки ============
 const SETTINGS_KEY = 'deepback-settings-v1';
-const settings = { volume: 0.7, voice: 1, sens: 1, invert: false };
+const settings = { volume: 0.7, voice: 1, sens: 1, invert: false, quality: 'high' };
 try { Object.assign(settings, JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}')); } catch (e) { /* без сохранения */ }
 function applySettings() {
   audio.setVolume(settings.volume);
@@ -327,11 +347,15 @@ function applySettings() {
   $('set-sens').value = settings.sens;
   $('sens-out').textContent = Number(settings.sens).toFixed(1);
   $('set-invert').checked = settings.invert;
+  const q = URL_QUALITY || settings.quality;
+  $('set-quality').value = settings.quality;
+  if (post.level !== q) post.setQuality(q, sun);
   try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch (e) { /* ignore */ }
 }
 $('set-volume').addEventListener('input', (e) => { settings.volume = e.target.value / 100; applySettings(); });
 $('set-voice').addEventListener('input', (e) => { settings.voice = e.target.value / 100; applySettings(); });
 $('set-sens').addEventListener('input', (e) => { settings.sens = Number(e.target.value); applySettings(); });
+$('set-quality').addEventListener('change', (e) => { settings.quality = e.target.value; applySettings(); });
 $('set-invert').addEventListener('change', (e) => { settings.invert = e.target.checked; applySettings(); });
 applySettings();
 
@@ -1294,8 +1318,12 @@ function updateCamera(dt) {
 function cameraEnv(dark) {
   sky.position.copy(camera.position);
   stars.position.copy(camera.position);
-  sun.position.set(player.pos.x + 60, player.pos.y + 90, player.pos.z + 40);
-  sun.target.position.copy(player.pos);
+  // тени считаются вокруг игрока, а в ролике — вокруг того, куда смотрит камера
+  const focus = S.mode === 'intro' ? camera.getWorldDirection(new THREE.Vector3()).multiplyScalar(35).add(camera.position) : player.pos;
+  const sd = sunDir.y > 0.08 ? sunDir : new THREE.Vector3(sunDir.x, 0.35, sunDir.z).normalize();
+  sun.position.copy(focus).addScaledVector(sd, 160);
+  sun.target.position.copy(focus);
+  S.underK = Math.max(0, Math.min(1, (ocean.surfaceAt(camera.position.x, camera.position.z) - camera.position.y) * 2));
 
   // под водой
   const under = camera.position.y < ocean.surfaceAt(camera.position.x, camera.position.z);
@@ -1320,6 +1348,7 @@ function cameraEnv(dark) {
     starMat.opacity = 0;
   }
   document.body.classList.toggle('underwater', under);
+  updateEnvironment(dark);
   rain.visible = S.weather === 'storm' && !under && (S.mode === 'day' || S.mode === 'closing');
   audio.setUnderwater(under);
 }
@@ -1375,7 +1404,7 @@ if (saved && saved.pop > 0) {
 
 
 // для фона меню и для автотестов
-window.__deepback = { S, voice, intro, startIntro, endIntro, player, city, ocean, deeplings, rain, navDots, startRun, startDay, endDay, keys, pressed, setYaw: (v) => (yaw = v) };
+window.__deepback = { S, post, voice, intro, startIntro, endIntro, player, city, ocean, deeplings, rain, navDots, startRun, startDay, endDay, keys, pressed, setYaw: (v) => (yaw = v) };
 
 // ============ Цикл ============
 const clock = new THREE.Clock();
@@ -1408,7 +1437,7 @@ function frame() {
     camera.lookAt(...S.debugCam[1]);
   }
   pressed.clear();
-  renderer.render(scene, camera);
+  post.render(dt, { under: S.underK || 0, time: S.time });
   requestAnimationFrame(frame);
 }
 frame();
@@ -1416,5 +1445,5 @@ frame();
 addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
-  renderer.setSize(window.innerWidth, window.innerHeight);
+  post.resize();
 });

@@ -2,6 +2,7 @@
 // Город перестраивается каждый день: ночное погружение всё перемешивает.
 import * as THREE from 'three';
 import { WHALE, backHeight, backU, BLOWHOLE, pointOnBack } from './whale.js';
+import { boxProjectUV } from './textures.js';
 
 export const STEP = 0.7;
 export const HATCH = new THREE.Vector3(0, 0, 13);
@@ -35,6 +36,9 @@ export const MATERIALS = M;
 
 const WALLS = [0x6f5a46, 0x4f6b6a, 0x7a6a55, 0x5d4a3f, 0x3f5560, 0x8a6e4b, 0x5a5f4c];
 const ROOFS = [0x7a3b2a, 0x3d4b52, 0x5b4636, 0x2f3d3a];
+// Ковчег — отдельные материалы: у цилиндра свои UV, текстуре нужен свой повтор
+M.arkWall = M.steel.clone();
+M.arkDome = M.rust.clone();
 
 function std(color) {
   return new THREE.MeshStandardMaterial({ color, roughness: 0.9 });
@@ -81,10 +85,10 @@ export class City {
     const g = new THREE.Group();
     const base = backHeight(0, 0) - 2;
     const R = 8.5;
-    const cyl = new THREE.Mesh(new THREE.CylinderGeometry(R, R + 0.6, 8, 40), M.steel);
+    const cyl = new THREE.Mesh(new THREE.CylinderGeometry(R, R + 0.6, 8, 40), M.arkWall);
     cyl.position.y = base + 4;
     g.add(cyl);
-    const dome = new THREE.Mesh(new THREE.SphereGeometry(R, 40, 20, 0, Math.PI * 2, 0, Math.PI / 2), M.rust);
+    const dome = new THREE.Mesh(new THREE.SphereGeometry(R, 40, 20, 0, Math.PI * 2, 0, Math.PI / 2), M.arkDome);
     dome.position.y = base + 8;
     g.add(dome);
     for (const y of [base + 2, base + 5, base + 8]) {
@@ -269,7 +273,7 @@ export class City {
     const h = 4 + rng() * 6 + 1.5;
     const g = new THREE.Group();
     g.position.set(x, base, z);
-    const walls = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), wallMats[Math.floor(rng() * wallMats.length)]);
+    const walls = new THREE.Mesh(boxProjectUV(new THREE.BoxGeometry(w, h, d), 2.4), wallMats[Math.floor(rng() * wallMats.length)]);
     walls.position.y = h / 2;
     g.add(walls);
 
@@ -282,7 +286,7 @@ export class City {
       roof.position.y = h + rh / 2;
       g.add(roof);
     } else {
-      const slab = new THREE.Mesh(new THREE.BoxGeometry(w + 0.8, 0.4, d + 0.8), roofMat);
+      const slab = new THREE.Mesh(boxProjectUV(new THREE.BoxGeometry(w + 0.8, 0.4, d + 0.8), 2.4), roofMat);
       slab.position.y = h + 0.2;
       g.add(slab);
       top += 0.4;
@@ -342,7 +346,7 @@ export class City {
   addCrate(rng, x, z) {
     const s = 1 + rng() * 0.8;
     const y = backHeight(x, z);
-    const m = new THREE.Mesh(new THREE.BoxGeometry(s, s, s), rng() < 0.5 ? M.rust : wallMats[2]);
+    const m = new THREE.Mesh(boxProjectUV(new THREE.BoxGeometry(s, s, s), 1.2), rng() < 0.5 ? M.rust : wallMats[2]);
     m.position.set(x, y + s / 2 - 0.15, z);
     m.rotation.y = rng() * Math.PI;
     shadow(m);
@@ -355,10 +359,10 @@ export class City {
     const y = backHeight(x, z);
     const g = new THREE.Group();
     g.position.set(x, y, z);
-    const mast = new THREE.Mesh(new THREE.BoxGeometry(0.8, 14, 0.8), M.rust);
+    const mast = new THREE.Mesh(boxProjectUV(new THREE.BoxGeometry(0.8, 14, 0.8), 2), M.rust);
     mast.position.y = 7;
     g.add(mast);
-    const boom = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, 16), M.rust);
+    const boom = new THREE.Mesh(boxProjectUV(new THREE.BoxGeometry(0.5, 0.5, 16), 2), M.rust);
     boom.position.set(0, 13.5, 6);
     g.add(boom);
     const cable = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 6), M.rope);
@@ -451,4 +455,47 @@ export class City {
 export function inside(c, x, z, r) {
   if (c.type === 'box') return x > c.minX - r && x < c.maxX + r && z > c.minZ - r && z < c.maxZ + r;
   return Math.hypot(x - c.x, z - c.z) < c.r + r;
+}
+
+// Текстуры навешиваются только в браузере (в тестах под Node нет canvas).
+// TEX — модуль textures.js.
+export function dressMaterials(TEX) {
+  WALLS.forEach((hex, i) => {
+    const c = new THREE.Color(hex);
+    const t = TEX.planks([Math.min(235, c.r * 255 * 1.75), Math.min(235, c.g * 255 * 1.75), Math.min(235, c.b * 255 * 1.75)]);
+    const m = wallMats[i];
+    m.map = t.map;
+    m.bumpMap = t.bump;
+    m.bumpScale = 1.4;
+    m.color.set(0xffffff);
+    m.needsUpdate = true;
+  });
+  ROOFS.forEach((hex, i) => {
+    const c = new THREE.Color(hex);
+    const t = TEX.shingles([c.r * 255 * 1.3, c.g * 255 * 1.3, c.b * 255 * 1.3]);
+    t.map.repeat.set(3, 3);
+    t.bump.repeat.set(3, 3);
+    const m = roofMats[i];
+    m.map = t.map;
+    m.bumpMap = t.bump;
+    m.bumpScale = 2;
+    m.color.set(0xffffff);
+    m.needsUpdate = true;
+  });
+  const metal = (mat, base, rx, ry) => {
+    const t = TEX.rustyMetal(base);
+    for (const k of ['map', 'bump', 'rough']) t[k].repeat.set(rx, ry);
+    mat.map = t.map;
+    mat.bumpMap = t.bump;
+    mat.bumpScale = 1.5;
+    mat.roughnessMap = t.rough;
+    mat.roughness = 1;
+    mat.color.set(0xffffff);
+    mat.needsUpdate = true;
+  };
+  metal(M.steel, [96, 108, 114], 1, 1);
+  metal(M.rust, [118, 78, 56], 1, 1);
+  metal(M.arkWall, [98, 110, 116], 6, 2);
+  metal(M.arkDome, [128, 70, 48], 5, 2);
+  metal(M.barrel, [170, 76, 40], 2, 1);
 }
