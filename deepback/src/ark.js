@@ -280,11 +280,143 @@ export class ArkInterior {
     const bed = hammock(this.hammockMat, null);
     this.placeStation(bed, BED, 1.6, 'bed');
 
+    this.furnish(TEX);
+
     this.people = new THREE.Group();
     scene.add(this.people);
     this.labelPoints = [];
     this.DOOR = DOOR;
     this.bedPos = pos(BED);
+  }
+
+  // Обстановка зала: ковёр, полки, бочки, стол, связки сушёной рыбы
+  furnish(TEX) {
+    const wood = std(0x6a4a30);
+    const at = (ang, r) => [Math.sin(ang) * r, Math.cos(ang) * r];
+    const block = (x, z, rad, top = 2.5) => this.colliders.push({ type: 'circle', x, z, r: rad, bottom: -1, topAt: () => top });
+
+    // ковёр вокруг печи
+    const rugMat = new THREE.MeshStandardMaterial({ color: 0x8a3b2a, roughness: 1 });
+    if (typeof document !== 'undefined') {
+      const c = document.createElement('canvas');
+      c.width = c.height = 256;
+      const g = c.getContext('2d');
+      const bands = ['#7a2f22', '#c99a4a', '#3b4a5a', '#7a2f22', '#e0c890', '#5a2a1e', '#c99a4a', '#3b4a5a'];
+      bands.forEach((col, i) => {
+        g.fillStyle = col;
+        g.beginPath();
+        g.arc(128, 128, 128 - i * 15, 0, Math.PI * 2);
+        g.fill();
+      });
+      g.strokeStyle = '#e0c890';
+      g.lineWidth = 3;
+      for (let i = 0; i < 24; i++) {
+        const ang = (i / 24) * Math.PI * 2;
+        g.beginPath();
+        g.moveTo(128 + Math.cos(ang) * 60, 128 + Math.sin(ang) * 60);
+        g.lineTo(128 + Math.cos(ang) * 100, 128 + Math.sin(ang) * 100);
+        g.stroke();
+      }
+      rugMat.map = new THREE.CanvasTexture(c);
+      rugMat.map.colorSpace = THREE.SRGBColorSpace;
+      rugMat.color.set(0xffffff);
+    }
+    const rug = new THREE.Mesh(new THREE.CircleGeometry(3.2, 40), rugMat);
+    rug.rotation.x = -Math.PI / 2;
+    rug.position.y = 0.012;
+    rug.receiveShadow = true;
+    this.scene.add(rug);
+
+    // полки с банками у стены
+    {
+      const [x, z] = at(1.8, 7.3);
+      const shelf = new THREE.Group();
+      shelf.position.set(x, 0, z);
+      shelf.lookAt(0, 0, 0);
+      for (const y of [0.6, 1.4, 2.2]) {
+        const board = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.08, 0.45), wood);
+        board.position.y = y;
+        shelf.add(board);
+        for (let i = 0; i < 6; i++) {
+          const jar = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.24, 10), new THREE.MeshStandardMaterial({ color: [0x9fbfa0, 0xc8a050, 0x8a5a3a, 0xb0c8d0][i % 4], roughness: 0.25, metalness: 0.1, transparent: true, opacity: 0.85 }));
+          jar.position.set(-0.9 + i * 0.36, y + 0.16, 0);
+          shelf.add(jar);
+        }
+      }
+      for (const s of [-1.05, 1.05]) {
+        const side = new THREE.Mesh(new THREE.BoxGeometry(0.08, 2.5, 0.45), wood);
+        side.position.set(s, 1.25, 0);
+        shelf.add(side);
+      }
+      shelf.traverse((m) => m.isMesh && (m.castShadow = true));
+      this.scene.add(shelf);
+      block(x, z, 1.1);
+    }
+
+    // бочки и мешки
+    for (const [ang, n] of [[-1.8, 4], [0.62, 2], [-0.62, 3]]) {
+      const [x, z] = at(ang, 7.0);
+      for (let i = 0; i < n; i++) {
+        const b = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 0.95, 12), std(0x7a4a2a));
+        const off = (i - (n - 1) / 2) * 0.85;
+        b.position.set(x + Math.cos(ang) * off, 0.48, z - Math.sin(ang) * off);
+        b.castShadow = true;
+        this.scene.add(b);
+        const hoop = new THREE.Mesh(new THREE.TorusGeometry(0.41, 0.03, 6, 16), std(0x222222, { metalness: 0.7 }));
+        hoop.rotation.x = Math.PI / 2;
+        hoop.position.copy(b.position);
+        this.scene.add(hoop);
+      }
+      block(x, z, 0.4 + n * 0.42);
+    }
+    for (let i = 0; i < 3; i++) {
+      const [x, z] = at(-2.75 + i * 0.12, 7.1);
+      const sack = new THREE.Mesh(new THREE.SphereGeometry(0.42, 10, 8), std(0xb8a07a, { roughness: 1 }));
+      sack.scale.set(1, 1.25, 0.85);
+      sack.position.set(x, 0.48, z);
+      sack.castShadow = true;
+      this.scene.add(sack);
+    }
+
+    // стол с кружками
+    {
+      const [x, z] = at(2.05, 3.4);
+      const t = new THREE.Group();
+      t.position.set(x, 0, z);
+      const topm = new THREE.Mesh(new THREE.CylinderGeometry(0.75, 0.75, 0.08, 18), wood);
+      topm.position.y = 0.85;
+      t.add(topm);
+      const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.18, 0.85, 8), wood);
+      leg.position.y = 0.42;
+      t.add(leg);
+      for (let i = 0; i < 3; i++) {
+        const mug = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.06, 0.14, 10), std(0x9a9a92, { metalness: 0.6, roughness: 0.4 }));
+        mug.position.set(Math.cos(i * 2.1) * 0.4, 0.96, Math.sin(i * 2.1) * 0.4);
+        t.add(mug);
+      }
+      const bowl = new THREE.Mesh(new THREE.SphereGeometry(0.2, 12, 6, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2), std(0x6a4a30));
+      bowl.position.y = 1.08;
+      t.add(bowl);
+      t.traverse((m) => m.isMesh && (m.castShadow = true));
+      this.scene.add(t);
+      block(x, z, 0.85, 1);
+    }
+
+    // связки сушёной рыбы под потолком
+    const fishMat = std(0xa89070, { roughness: 0.7, metalness: 0.2 });
+    for (const [ang, r] of [[0.9, 5.2], [-0.9, 5.2], [2.6, 4.5], [-2.5, 4.6]]) {
+      const [x, z] = at(ang, r);
+      const rope = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 2.6, 4), std(0x3b3128));
+      rope.position.set(x, 5.3, z);
+      this.scene.add(rope);
+      for (let i = 0; i < 5; i++) {
+        const f = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 6), fishMat);
+        f.scale.set(0.5, 1.8, 0.3);
+        f.position.set(x + (i % 2 ? 0.08 : -0.08), 4.4 - i * 0.32, z);
+        f.rotation.y = i;
+        this.scene.add(f);
+      }
+    }
   }
 
   placeStation(obj, p, radius, kind) {

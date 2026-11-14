@@ -34,6 +34,8 @@ const M = {
   leechEye: new THREE.MeshBasicMaterial({ color: 0xff5a7a }),
 };
 M.trim = new THREE.MeshStandardMaterial({ color: 0x2c2620, roughness: 0.85 });
+M.deck = new THREE.MeshStandardMaterial({ color: 0x7a5c40, roughness: 0.9 });
+M.net = new THREE.MeshStandardMaterial({ color: 0x3a3a30, roughness: 1, transparent: true, alphaTest: 0.3, side: THREE.DoubleSide });
 export const MATERIALS = M;
 // Текстура мягкого свечения задаётся из браузера (в Node её нет)
 export const GLOW = { tex: null };
@@ -236,6 +238,8 @@ export class City {
       if (p) this.addLamp(p.x, p.z);
     }
     this.addLines(rng);
+    this.addWalkways(rng);
+    this.addProps(rng);
     // Ящики
     for (let i = 0; i < 30; i++) {
       const p = this.randomPoint(rng, 0.05, 0.85, 1.4);
@@ -343,25 +347,92 @@ export class City {
     const walls = new THREE.Mesh(boxProjectUV(new THREE.BoxGeometry(w, h, d), 2.4), wallMats[Math.floor(rng() * wallMats.length)]);
     walls.position.y = h / 2;
     g.add(walls);
+    // угловые столбы каркаса
+    for (const [px, pz] of [[-hx, -hz], [hx, -hz], [-hx, hz], [hx, hz]]) {
+      const post = new THREE.Mesh(new THREE.BoxGeometry(0.28, h, 0.28), M.trim);
+      post.position.set(px, h / 2, pz);
+      g.add(post);
+    }
+
+    // второй этаж с нависанием — у части домов
+    let rb = h; // где начинается крыша
+    let uw = w;
+    let ud = d;
+    if (rng() < 0.38 && h < 9) {
+      uw = w + 0.8;
+      ud = d + 0.8;
+      const uh = 2.8;
+      const upper = new THREE.Mesh(boxProjectUV(new THREE.BoxGeometry(uw, uh, ud), 2.4), wallMats[Math.floor(rng() * wallMats.length)]);
+      upper.position.y = h + uh / 2;
+      g.add(upper);
+      const beam = new THREE.Mesh(new THREE.BoxGeometry(uw + 0.1, 0.25, ud + 0.1), M.trim);
+      beam.position.y = h + 0.05;
+      g.add(beam);
+      for (let i = 0; i < 2; i++) {
+        const wi = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.8, 0.1), M.window);
+        wi.position.set((i - 0.5) * uw * 0.45, h + 1.4, ud / 2 + 0.03);
+        g.add(wi);
+        const fr = new THREE.Mesh(new THREE.BoxGeometry(1.0, 1.0, 0.06), M.trim);
+        fr.position.set(wi.position.x, wi.position.y, ud / 2 + 0.01);
+        g.add(fr);
+      }
+      // балкон с перилами
+      if (rng() < 0.6) {
+        const side = rng() < 0.5 ? -1 : 1;
+        const bal = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.12, ud * 0.7), M.deck);
+        bal.position.set(side * (uw / 2 + 0.45), h + 0.3, 0);
+        g.add(bal);
+        const rail = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, ud * 0.7), M.trim);
+        rail.position.set(side * (uw / 2 + 0.88), h + 1.25, 0);
+        g.add(rail);
+        for (let k = -2; k <= 2; k++) {
+          const bal2 = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.95, 0.06), M.trim);
+          bal2.position.set(side * (uw / 2 + 0.88), h + 0.8, (k / 2) * ud * 0.33);
+          g.add(bal2);
+        }
+      }
+      rb = h + uh;
+    }
 
     const roofMat = roofMats[Math.floor(rng() * roofMats.length)];
-    let top = base + h;
+    let top = base + rb;
     if (rng() < 0.5) {
       const rh = 2 + rng() * 2;
-      const roof = new THREE.Mesh(new THREE.ConeGeometry(Math.hypot(hx, hz) * 1.05, rh, 4), roofMat);
+      const roof = new THREE.Mesh(new THREE.ConeGeometry(Math.hypot(uw / 2, ud / 2) * 1.05, rh, 4), roofMat);
       roof.rotation.y = Math.PI / 4;
-      roof.position.y = h + rh / 2;
+      roof.position.y = rb + rh / 2;
       g.add(roof);
+      // флюгер-рыбка на коньке
+      if (rng() < 0.35) {
+        const rod = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 1.2, 5), M.dark);
+        rod.position.y = rb + rh + 0.5;
+        g.add(rod);
+        const vane = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.6, 4), M.rust);
+        vane.rotation.z = Math.PI / 2;
+        vane.position.y = rb + rh + 0.95;
+        g.add(vane);
+      }
     } else {
-      const slab = new THREE.Mesh(boxProjectUV(new THREE.BoxGeometry(w + 0.8, 0.4, d + 0.8), 2.4), roofMat);
-      slab.position.y = h + 0.2;
+      const slab = new THREE.Mesh(boxProjectUV(new THREE.BoxGeometry(uw + 0.8, 0.4, ud + 0.8), 2.4), roofMat);
+      slab.position.y = rb + 0.2;
       g.add(slab);
       top += 0.4;
       if (rng() < 0.6) {
         const ch = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.45, 2.2, 8), M.rust);
-        ch.position.set((rng() - 0.5) * w * 0.6, h + 1.3, (rng() - 0.5) * d * 0.6);
+        ch.position.set((rng() - 0.5) * uw * 0.6, rb + 1.3, (rng() - 0.5) * ud * 0.6);
         g.add(ch);
-        this.chimneys.push({ x: x + ch.position.x, y: base + h + 2.45, z: z + ch.position.z });
+        this.chimneys.push({ x: x + ch.position.x, y: base + rb + 2.45, z: z + ch.position.z });
+      } else if (rng() < 0.6) {
+        // бочка для дождевой воды на плоской крыше
+        const tank = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 0.7, 1.3, 14), M.barrel);
+        tank.position.set((rng() - 0.5) * uw * 0.5, rb + 1.05, (rng() - 0.5) * ud * 0.5);
+        g.add(tank);
+        for (const yy of [0.6, 1.5]) {
+          const hoop = new THREE.Mesh(new THREE.TorusGeometry(0.71, 0.04, 6, 18), M.dark);
+          hoop.rotation.x = Math.PI / 2;
+          hoop.position.set(tank.position.x, rb + yy, tank.position.z);
+          g.add(hoop);
+        }
       }
     }
     // дверь и окна
@@ -377,6 +448,21 @@ export class City {
     const step = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.3, 0.8), M.trim);
     step.position.set(0, door.position.y - 1.15, hz + 0.4);
     g.add(step);
+    // фонарик у двери
+    if (rng() < 0.5) {
+      const arm = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, 0.4), M.dark);
+      arm.position.set(0.95, door.position.y + 0.9, hz + 0.25);
+      g.add(arm);
+      const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.14, 10, 8), M.lamp);
+      lamp.position.set(0.95, door.position.y + 0.72, hz + 0.42);
+      g.add(lamp);
+    }
+    // вывеска над дверью
+    if (rng() < 0.3) {
+      const sign = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.45, 0.06), wallMats[Math.floor(rng() * wallMats.length)]);
+      sign.position.set(0, door.position.y + 1.6, hz + 0.2);
+      g.add(sign);
+    }
     const winCount = 1 + Math.floor(rng() * 3);
     for (let i = 0; i < winCount; i++) {
       const wg = new THREE.Group();
@@ -600,6 +686,15 @@ export function dressMaterials(TEX) {
     mat.color.set(0xffffff);
     mat.needsUpdate = true;
   };
+  const dk = TEX.planks([170, 128, 88]);
+  M.deck.map = dk.map;
+  M.deck.bumpMap = dk.bump;
+  M.deck.bumpScale = 1.2;
+  M.deck.color.set(0xffffff);
+  M.deck.needsUpdate = true;
+  M.net.alphaMap = TEX.netTexture();
+  M.net.alphaMap.repeat.set(3, 2);
+  M.net.needsUpdate = true;
   metal(M.steel, [96, 108, 114], 1, 1);
   metal(M.rust, [118, 78, 56], 1, 1);
   metal(M.arkWall, [98, 110, 116], 6, 2);
@@ -672,5 +767,99 @@ City.prototype.addLines = function (rng) {
     const flags = new THREE.Mesh(geo, flagMat);
     flags.castShadow = true;
     this.group.add(flags);
+  }
+};
+
+// Дощатые мостки: «улицы» от Ковчега к краям спины, огибают дома
+City.prototype.addWalkways = function (rng) {
+  const geo = new THREE.BoxGeometry(2.0, 0.09, 0.42);
+  const q = new THREE.Quaternion();
+  const up = new THREE.Vector3(0, 1, 0);
+  const n = new THREE.Vector3();
+  const rays = 7 + Math.floor(rng() * 3);
+  for (let r = 0; r < rays; r++) {
+    let a = (r / rays) * Math.PI * 2 + rng() * 0.4;
+    let x = Math.sin(a) * 10.5;
+    let z = Math.cos(a) * 10.5;
+    for (let s = 0; s < 220; s++) {
+      if (backU(x, z) > 0.8) break;
+      // если впереди дом — сворачиваем
+      let tries = 0;
+      while (this.overlaps(x + Math.sin(a) * 1.5, z + Math.cos(a) * 1.5, 1.2) && tries < 6) {
+        a += (rng() < 0.5 ? -1 : 1) * 0.35;
+        tries++;
+      }
+      if (tries >= 6) break;
+      x += Math.sin(a) * 0.5;
+      z += Math.cos(a) * 0.5;
+      a += (rng() - 0.5) * 0.06; // чуть петляет
+      const y = backHeight(x, z);
+      if (!isFinite(y)) break;
+      const e = 0.3;
+      n.set(backHeight(x - e, z) - backHeight(x + e, z), 2 * e, backHeight(x, z - e) - backHeight(x, z + e)).normalize();
+      const plank = new THREE.Mesh(geo, M.deck);
+      plank.position.set(x, y + 0.05, z);
+      q.setFromUnitVectors(up, n);
+      plank.quaternion.copy(q);
+      plank.rotateY(a + (rng() - 0.5) * 0.08);
+      if (rng() < 0.04) continue; // выпавшая доска
+      this.group.add(plank);
+    }
+  }
+};
+
+// Мелочи между домами: сушилки с сетями, штабеля бочек, бухты канатов
+City.prototype.addProps = function (rng) {
+  for (let i = 0; i < 16; i++) {
+    const p = this.randomPoint(rng, 0.08, 0.8, 2.2);
+    if (!p) continue;
+    const y = backHeight(p.x, p.z);
+    const g = new THREE.Group();
+    g.position.set(p.x, y, p.z);
+    g.rotation.y = rng() * Math.PI;
+    const kind = rng();
+    if (kind < 0.35) {
+      // сушилка: два шеста и сеть
+      for (const s of [-1.3, 1.3]) {
+        const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.09, 2.6, 6), M.trim);
+        pole.position.set(s, 1.3, 0);
+        g.add(pole);
+      }
+      const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 2.7, 5), M.trim);
+      bar.rotation.z = Math.PI / 2;
+      bar.position.y = 2.5;
+      g.add(bar);
+      const net = new THREE.Mesh(new THREE.PlaneGeometry(2.5, 1.9, 8, 4), M.net);
+      const pos = net.geometry.attributes.position;
+      for (let k = 0; k < pos.count; k++) pos.setZ(k, Math.sin((pos.getX(k) / 2.5 + 0.5) * Math.PI) * 0.15 * (0.5 - pos.getY(k) / 1.9));
+      net.position.y = 1.5;
+      g.add(net);
+      this.colliders.push({ type: 'box', minX: p.x - 1.4, maxX: p.x + 1.4, minZ: p.z - 0.3, maxZ: p.z + 0.3, bottom: y - 1, top: y + 2.6 });
+    } else if (kind < 0.7) {
+      // штабель бочек
+      const n = 3 + Math.floor(rng() * 3);
+      for (let k = 0; k < n; k++) {
+        const b = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 1.0, 12), M.barrel);
+        const ring = k < 3;
+        b.position.set(ring ? (k - 1) * 0.9 : (k - 3.5) * 0.9, ring ? 0.5 : 1.5, ring ? 0 : 0);
+        if (!ring) b.position.y = 1.5;
+        g.add(b);
+      }
+      this.colliders.push({ type: 'box', minX: p.x - 1.4, maxX: p.x + 1.4, minZ: p.z - 1.4, maxZ: p.z + 1.4, bottom: y - 1, top: y + 1.0 });
+    } else {
+      // бухта каната и ящик
+      for (let k = 0; k < 4; k++) {
+        const coil = new THREE.Mesh(new THREE.TorusGeometry(0.42 - k * 0.04, 0.07, 6, 18), M.rope);
+        coil.rotation.x = Math.PI / 2;
+        coil.position.set(0, 0.08 + k * 0.12, 0);
+        g.add(coil);
+      }
+      const box = new THREE.Mesh(boxProjectUV(new THREE.BoxGeometry(0.9, 0.7, 0.9), 1.2), M.deck);
+      box.position.set(1.1, 0.35, 0.2);
+      box.rotation.y = 0.3;
+      g.add(box);
+    }
+    g.traverse((m) => m.isMesh && (m.castShadow = m.receiveShadow = true));
+    this.group.add(g);
   }
 };

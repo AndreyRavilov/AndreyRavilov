@@ -1568,7 +1568,19 @@ function updateArk(dt) {
   const cy = Math.min(6.2, Math.max(0.6, camTarget.y + Math.sin(pitch) * dist));
   const cr = Math.hypot(cx, cz);
   if (cr > ARK_R - 0.4) { cx *= (ARK_R - 0.4) / cr; cz *= (ARK_R - 0.4) / cr; }
-  camera.position.set(cx, cy, cz);
+  // если между ныряльщиком и камерой печь, житель или мебель — камера подъезжает ближе
+  let k = 1;
+  for (let i = 1; i <= 24; i++) {
+    const t = i / 24;
+    const x = camTarget.x + (cx - camTarget.x) * t;
+    const z = camTarget.z + (cz - camTarget.z) * t;
+    const y = camTarget.y + (cy - camTarget.y) * t;
+    if (ark.colliders.some((c) => Math.hypot(x - c.x, z - c.z) < c.r + 0.35 && y < c.topAt(x, z) + 0.4)) {
+      k = Math.max(0.15, (i - 1) / 24);
+      break;
+    }
+  }
+  camera.position.set(camTarget.x + (cx - camTarget.x) * k, camTarget.y + (cy - camTarget.y) * k, camTarget.z + (cz - camTarget.z) * k);
   camera.lookAt(camTarget);
 
   // имена над жителями

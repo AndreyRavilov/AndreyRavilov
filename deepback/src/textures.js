@@ -225,3 +225,27 @@ export function glowDot(size = 64) {
   t.colorSpace = THREE.SRGBColorSpace;
   return t;
 }
+
+// Сеть: ячейки для карты прозрачности
+export function netTexture(size = 128) {
+  const c = canvas(size);
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, size, size);
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 3;
+  const step = size / 8;
+  for (let i = -8; i <= 16; i++) {
+    ctx.beginPath();
+    ctx.moveTo(i * step, 0);
+    ctx.lineTo(i * step + size, size);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(i * step + size, 0);
+    ctx.lineTo(i * step, size);
+    ctx.stroke();
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  return t;
+}
