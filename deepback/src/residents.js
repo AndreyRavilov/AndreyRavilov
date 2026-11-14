@@ -92,7 +92,7 @@ export function makeQuest(rng, alive, cycle) {
     who: r.id,
     reward: 3,
     done: false,
-    text: `${r.name} потерял(а) ${r.keepsake} во время прошлого погружения. Вещь светится розовым где-то на краю спины.`,
+    text: `${r.name}: прошлой ночью течением унесло ${r.keepsake}. Вещь светится розовым где-то на краю спины.`,
   };
 }
 

@@ -4,7 +4,9 @@ import { Ocean } from './ocean.js';
 import { City, HATCH, ITEM, MATERIALS } from './city.js';
 import { Player, CAPACITY } from './player.js';
 import { Audio } from './audio.js';
-import { INTRO, LORE, ENDINGS, NIGHT_LINES } from './lore.js';
+import { INTRO, LORE, ENDINGS, NIGHT_LINES, PROLOGUE } from './lore.js';
+import * as NAV from './nav.js';
+import { Minimap, MAP_COLORS, LEGEND } from './minimap.js';
 import { Deepling } from './creatures.js';
 import { UPGRADES, upgradeCost } from './upgrades.js';
 import { RESIDENTS, ICON, makeQuest, WEATHER, rollWeather } from './residents.js';
@@ -97,6 +99,15 @@ function resetBlowParticle(i) {
 }
 for (let i = 0; i < BLOW_N; i++) resetBlowParticle(i);
 
+// пунктир навигатора на земле
+const NAV_DOTS = 160;
+const navMat = new THREE.MeshBasicMaterial({ color: 0x58f0d8, transparent: true, opacity: 0.9, depthWrite: false });
+const navDots = new THREE.InstancedMesh(new THREE.OctahedronGeometry(0.2, 0), navMat, NAV_DOTS);
+navDots.frustumCulled = false;
+navDots.count = 0;
+navDots.renderOrder = 3;
+scene.add(navDots);
+
 // дождь для шторма
 const RAIN_N = 2500;
 const rainGeo = new THREE.BufferGeometry();
@@ -162,6 +173,10 @@ const S = {
   alive: [],
   quest: null,
   weather: 'clear',
+  navMode: 0,
+  navTimer: 0,
+  navPath: null,
+  navInfo: { label: 'Авто', dist: 0 },
   wind: null,
   flash: 0,
   thunderTimer: 8,
@@ -187,7 +202,7 @@ let yaw = 0;
 let pitch = 0.35;
 let dragging = false;
 addEventListener('keydown', (e) => {
-  if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
+  if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Tab'].includes(e.code)) e.preventDefault();
   if (!keys.has(e.code)) pressed.add(e.code);
   keys.add(e.code);
 });
@@ -227,6 +242,7 @@ function showModal({ title, body, buttons, wide = false }) {
   const m = $('modal');
   m.classList.remove('hidden');
   m.querySelector('.card').classList.toggle('wide', wide);
+  delete m.querySelector('.card').dataset.step;
   $('modal-title').textContent = title;
   $('modal-body').innerHTML = '';
   if (typeof body === 'string') {
@@ -316,13 +332,8 @@ function updateHud() {
   $('oxy').classList.toggle('hidden', player.oxygen > 0.995 && !player.headUnder);
   $('oxybar').style.width = Math.max(0, player.oxygen) * 100 + '%';
   $('oxybar').className = player.oxygen < 0.3 ? 'danger' : '';
-  // компас к шлюзу
-  const dx = HATCH.x - player.pos.x;
-  const dz = HATCH.z - player.pos.z;
-  const fx = -Math.sin(yaw), fz = -Math.cos(yaw), rx = Math.cos(yaw), rz = -Math.sin(yaw);
-  const ang = Math.atan2(dx * rx + dz * rz, dx * fx + dz * fz);
-  $('arrow').style.transform = `rotate(${ang}rad)`;
-  $('dist').textContent = Math.round(Math.hypot(dx, dz)) + ' м';
+  $('nav-target').textContent = S.navInfo.label;
+  $('nav-dist').textContent = S.navInfo.dist ? `· ${Math.round(S.navInfo.dist)} м` : '';
   $('hud').classList.toggle('alarm', p > 0.85 && S.mode === 'day');
   const W = WEATHER[S.weather];
   $('weather').textContent = `${W.icon} ${W.name}`;
@@ -403,6 +414,9 @@ function startDay() {
   rain.visible = S.weather === 'storm';
   S.thunderTimer = 5;
   city.generate(S.runSeed + S.cycle * 1013, S.cycle, S.lore, LORE.length, { keepsake: S.quest?.kind === 'keepsake' });
+  navGrid = NAV.buildGrid((x, z) => backU(x, z) >= 0.97 || city.overlaps(x, z, 0.8));
+  S.navTimer = 0;
+  S.navPath = null;
   const sp = new THREE.Vector3(HATCH.x, 0, HATCH.z + 6);
   sp.y = city.groundAt(sp.x, sp.z) + 0.1;
   player.reset(sp);
@@ -492,6 +506,7 @@ function endDay(outcome) {
   if (outcome === 'safe' && player.carried.length) deposit();
   S.mode = 'night';
   S.paused = false;
+  navDots.count = 0;
   document.exitPointerLock?.();
   $('hud').classList.add('hidden');
   const lines = [];
@@ -709,6 +724,7 @@ function updateGame(dt) {
     pk.mesh.position.y = pk.y + Math.sin(S.time * 2 + pk.phase) * 0.2;
   }
 
+  updateNavigator(dt);
   updateHarpoon(dt);
   updateLeeches(dt);
   updateDeeplings(dt);
@@ -839,6 +855,123 @@ function updateWeather(dt) {
     hemi.intensity += 3 * Math.max(0, S.flash) / 0.25;
     skyMat.uniforms.horizon.value.lerp(new THREE.Color(0xdde8ff), Math.max(0, S.flash) * 2);
   }
+}
+
+// ============ Навигатор и мини-карта ============
+let navGrid = null;
+const NAV_MODES = [
+  ['auto', 'Авто'],
+  ['hatch', 'Ковчег'],
+  ['food', 'Рыба'],
+  ['fuel', 'Ворвань'],
+  ['scrap', 'Обломки'],
+  ['relic', 'Реликвия'],
+  ['quest', 'Просьба жителя'],
+  ['off', 'Выключен'],
+];
+const NAV_NAMES = { hatch: 'Ковчег', food: 'Рыба', fuel: 'Ворвань', scrap: 'Обломки', relic: 'Реликвия', keepsake: 'Вещь жителя', any: 'Припасы' };
+
+function nearestOf(types, fits = false) {
+  let best = null;
+  let bd = Infinity;
+  for (const p of city.pickups) {
+    if (!p.active || !types.includes(p.type)) continue;
+    if (fits && player.weight + ITEM[p.type].weight > player.capacity) continue;
+    const d = Math.hypot(p.x - player.pos.x, p.z - player.pos.z);
+    if (d < bd) { bd = d; best = p; }
+  }
+  return best;
+}
+
+// Куда ведёт навигатор: { kind, x, z } или null
+function navTarget() {
+  let kind = NAV_MODES[S.navMode][0];
+  if (kind === 'off' || S.mode === 'closing') return null;
+  if (kind === 'auto') {
+    const q = S.quest;
+    kind = NAV.autoTarget({
+      p: S.t / S.T,
+      weight: player.weight,
+      capacity: player.capacity,
+      food: S.food,
+      fuel: S.fuel,
+      needFood: needFood(),
+      needFuel: needFuel(),
+      carried: player.carried,
+      questKeepsake: !!(q && q.kind === 'keepsake' && !q.done && !q.have && !player.carried.includes('keepsake') && nearestOf(['keepsake'])),
+    });
+  } else if (kind === 'quest') {
+    const q = S.quest;
+    if (!q || q.done) kind = 'hatch';
+    else if (q.kind === 'keepsake') kind = player.carried.includes('keepsake') ? 'hatch' : 'keepsake';
+    else kind = q.have + player.carried.filter((t) => t === q.item).length >= q.need ? 'hatch' : q.item;
+  }
+  if (kind === 'hatch') return { kind, x: HATCH.x, z: HATCH.z };
+  const pk = kind === 'any' ? nearestOf(['food', 'fuel', 'scrap'], true) : nearestOf([kind]);
+  if (pk) return { kind, x: pk.x, z: pk.z };
+  // нужного нет на карте — в режиме «Авто» ведём домой
+  return NAV_MODES[S.navMode][0] === 'auto' ? { kind: 'hatch', x: HATCH.x, z: HATCH.z } : { kind, none: true };
+}
+
+const navM = new THREE.Matrix4();
+function updateNavigator(dt) {
+  if (pressed.has('Tab')) {
+    S.navMode = (S.navMode + 1) % NAV_MODES.length;
+    S.navTimer = 0;
+    toast(`Навигатор: ${NAV_MODES[S.navMode][1]}`);
+  }
+  if (pressed.has('KeyM')) $('hud').classList.toggle('nomap');
+  S.navTimer -= dt;
+  if (S.navTimer <= 0) {
+    S.navTimer = 0.4;
+    const tgt = navTarget();
+    const modeName = NAV_MODES[S.navMode][1];
+    if (!tgt) {
+      S.navPath = null;
+      S.navInfo = { label: S.mode === 'closing' ? '—' : modeName, dist: 0 };
+    } else if (tgt.none) {
+      S.navPath = null;
+      S.navInfo = { label: `${NAV_NAMES[tgt.kind]}: нет на карте`, dist: 0 };
+    } else {
+      const path = navGrid ? NAV.findPath(navGrid, { x: player.pos.x, z: player.pos.z }, tgt) : null;
+      if (path) {
+        path[path.length - 1] = { x: tgt.x, z: tgt.z };
+        path[0] = { x: player.pos.x, z: player.pos.z };
+      }
+      S.navPath = path || [{ x: player.pos.x, z: player.pos.z }, { x: tgt.x, z: tgt.z }];
+      const auto = NAV_MODES[S.navMode][0] === 'auto' || NAV_MODES[S.navMode][0] === 'quest';
+      S.navInfo = { label: auto ? `${modeName} → ${NAV_NAMES[tgt.kind]}` : NAV_NAMES[tgt.kind], dist: NAV.pathLength(S.navPath), kind: tgt.kind };
+      navMat.color.set(tgt.kind === 'hatch' ? 0x58f0d8 : MAP_COLORS[tgt.kind] || '#ffe9a8');
+    }
+  }
+  // пунктир «бежит» от игрока к цели
+  let n = 0;
+  if (S.navPath) {
+    const pts = S.navPath.slice();
+    pts[0] = { x: player.pos.x, z: player.pos.z };
+    const dots = NAV.dotsAlong(pts, 1.4, 1.2 + ((S.time * 2.2) % 1.4), NAV_DOTS);
+    for (const d of dots) {
+      const bh = backHeight(d.x, d.z);
+      const y = isFinite(bh) ? city.groundAt(d.x, d.z, bh + 0.4) + 0.45 : ocean.surfaceAt(d.x, d.z) + 0.3;
+      navM.makeTranslation(d.x, y, d.z);
+      navDots.setMatrixAt(n++, navM);
+    }
+  }
+  navDots.count = n;
+  navDots.instanceMatrix.needsUpdate = true;
+
+  minimap.draw({
+    dt,
+    time: S.time,
+    water: ocean.level,
+    colliders: city.colliders,
+    pickups: city.pickups,
+    leeches: city.leeches,
+    deeplings,
+    player: { x: player.pos.x, z: player.pos.z },
+    yaw,
+    path: S.navPath,
+  });
 }
 
 const HARPOON_CD = [1.6, 1.1, 0.7];
@@ -977,10 +1110,39 @@ function leaveMenu() {
   audio.resume();
   $('menu').classList.add('hidden');
 }
+// Предыстория: слайды поверх вращающейся панорамы города
+function showPrologue(onDone) {
+  const slide = (i) => {
+    const last = i === PROLOGUE.length - 1;
+    const buttons = [{ label: last ? 'Выйти из шлюза' : 'Дальше', onClick: () => (last ? onDone() : slide(i + 1)) }];
+    if (!last) buttons.push({ label: 'Пропустить', onClick: onDone });
+    showModal({ title: `${PROLOGUE[i].title}`, body: PROLOGUE[i].text, buttons });
+    $('modal').querySelector('.card').dataset.step = `${i + 1} / ${PROLOGUE.length}`;
+    $('modal-buttons').lastChild.classList.toggle('secondary', !last);
+  };
+  slide(0);
+}
 $('start').addEventListener('click', () => {
   leaveMenu();
-  startRun();
+  showPrologue(startRun);
 });
+$('prologue-btn').addEventListener('click', () => {
+  $('menu').classList.add('hidden');
+  showPrologue(() => $('menu').classList.remove('hidden'));
+});
+
+// мини-карта и её легенда
+const minimap = new Minimap($('minimap'));
+for (const [key, label] of LEGEND) {
+  const li = document.createElement('li');
+  const i = document.createElement('i');
+  if (key === 'relic' || key === 'keepsake') i.className = 'diamond';
+  if (key === 'deepling') i.className = 'tri';
+  i.style.background = MAP_COLORS[key];
+  i.style.setProperty('--c', MAP_COLORS[key]);
+  li.append(i, label);
+  $('legend').appendChild(li);
+}
 const saved = loadGame();
 if (saved && saved.pop > 0) {
   $('continue').classList.remove('hidden');
@@ -998,7 +1160,7 @@ if (saved && saved.pop > 0) {
 
 
 // для фона меню и для автотестов
-window.__deepback = { S, player, city, ocean, deeplings, rain, startRun, startDay, endDay, keys, pressed, setYaw: (v) => (yaw = v) };
+window.__deepback = { S, player, city, ocean, deeplings, rain, navDots, startRun, startDay, endDay, keys, pressed, setYaw: (v) => (yaw = v) };
 
 // ============ Цикл ============
 const clock = new THREE.Clock();

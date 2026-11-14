@@ -282,3 +282,78 @@ test('семь реликвий: выбор и каждый из трёх фин
     await page.context().close();
   }
 });
+
+test('предыстория: пять слайдов перед первым днём, из меню её можно перечитать', async (t) => {
+  const page = await openGame(env); t.after(() => page.context().close().catch(() => {}));
+  await page.click('#prologue-btn');
+  await page.locator('#modal-title', { hasText: 'Мир без берегов' }).waitFor();
+  await clickModalButton(page, 'Пропустить');
+  assert.ok(await page.isVisible('#menu'), 'после просмотра возвращаемся в меню');
+  await page.click('#start');
+  const titles = ['Мир без берегов', 'Ноа', 'Жребий', 'Что тебе предстоит', 'О чём молчит Совет'];
+  for (let i = 0; i < titles.length; i++) {
+    await page.locator('#modal-title', { hasText: titles[i] }).waitFor();
+    assert.equal(await game(page, () => window.__deepback.S.mode), 'menu', 'игра не идёт, пока читаем');
+    await clickModalButton(page, i === titles.length - 1 ? 'Выйти из шлюза' : 'Дальше');
+  }
+  await waitFor(page, () => window.__deepback.S.mode === 'day');
+  assert.deepEqual(page.errors, []);
+});
+
+test('мини-карта нарисована, у неё есть легенда, M её прячет', async (t) => {
+  const page = await openGame(env); t.after(() => page.context().close().catch(() => {}));
+  await startNewRun(page);
+  assert.ok(await page.isVisible('#minimap'));
+  const legend = await page.textContent('#legend');
+  for (const word of ['Ты', 'Ковчег', 'Рыба', 'Ворвань', 'Обломки', 'Реликвия', 'Пиявка', 'Глубинник']) assert.match(legend, new RegExp(word));
+  // на холсте есть и спина, и отметки припасов, и стрелка игрока
+  await waitFor(page, () => {
+    const c = document.getElementById('minimap');
+    const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+    const seen = new Set();
+    for (let i = 0; i < d.length; i += 4) if (d[i + 3] > 200) seen.add(`${d[i] >> 5},${d[i + 1] >> 5},${d[i + 2] >> 5}`);
+    return seen.size >= 6;
+  });
+  await page.keyboard.press('KeyM');
+  await waitFor(page, () => getComputedStyle(document.getElementById('map')).display === 'none');
+  await page.keyboard.press('KeyM');
+  await waitFor(page, () => getComputedStyle(document.getElementById('map')).display !== 'none');
+});
+
+test('навигатор: пунктир ведёт к цели, Tab меняет цель, к вечеру зовёт в Ковчег', async (t) => {
+  const page = await openGame(env); t.after(() => page.context().close().catch(() => {}));
+  await startNewRun(page);
+  // авто: еды мало — ведёт к рыбе
+  await waitFor(page, () => window.__deepback.navDots.count > 3);
+  assert.match(await page.textContent('#nav-target'), /Авто → (Рыба|Вещь жителя)/);
+  assert.match(await page.textContent('#nav-dist'), /\d+ м/);
+  // маршрут заканчивается на цели и не проходит сквозь дома
+  const ok = await game(page, () => {
+    const d = window.__deepback;
+    const path = d.S.navPath;
+    const end = path[path.length - 1];
+    const onPickup = d.city.pickups.some((p) => p.active && Math.hypot(p.x - end.x, p.z - end.z) < 0.01);
+    let through = false;
+    for (let i = 1; i < path.length; i++) {
+      for (let k = 0; k <= 20; k++) {
+        const x = path[i - 1].x + (path[i].x - path[i - 1].x) * (k / 20);
+        const z = path[i - 1].z + (path[i].z - path[i - 1].z) * (k / 20);
+        for (const c of d.city.colliders) {
+          if (c.type === 'box' && c.maxX - c.minX > 3 && x > c.minX && x < c.maxX && z > c.minZ && z < c.maxZ) through = true;
+        }
+      }
+    }
+    return { onPickup, through };
+  });
+  assert.deepEqual(ok, { onPickup: true, through: false });
+  // Tab: следующая цель — Ковчег
+  await page.keyboard.press('Tab');
+  await waitFor(page, () => document.getElementById('nav-target').textContent === 'Ковчег');
+  // ... и дальше по кругу до «Выключен»: пунктир исчезает
+  for (let i = 0; i < 6; i++) await page.keyboard.press('Tab');
+  await waitFor(page, () => document.getElementById('nav-target').textContent === 'Выключен' && window.__deepback.navDots.count === 0);
+  await page.keyboard.press('Tab'); // снова «Авто»
+  // вечером авто-режим ведёт домой
+  await game(page, () => { const d = window.__deepback; d.S.t = d.S.T * 0.8; });
+  await waitFor(page, () => /Авто → Ковчег/.test(document.getElementById('nav-target').textContent));
+});
