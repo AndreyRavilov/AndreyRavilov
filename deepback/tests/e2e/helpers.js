@@ -8,23 +8,34 @@ const { chromium } = require('playwright');
 export async function setup() {
   const server = await serve(0);
   const url = `http://127.0.0.1:${server.address().port}/index.html`;
-  const browser = await chromium.launch({
+  const launch = () => chromium.launch({
     args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--autoplay-policy=no-user-gesture-required'],
   });
-  return {
+  const env = {
     url,
-    browser,
+    browser: await launch(),
+    opened: 0,
+    // программный рендер копит память: каждые 8 игр браузер перезапускается
+    async fresh() {
+      if (++env.opened % 8 === 0) {
+        await env.browser.close().catch(() => {});
+        env.browser = await launch();
+      }
+      return env.browser;
+    },
     async close() {
-      await browser.close();
+      await env.browser.close();
       server.close();
     },
   };
+  return env;
 }
 
 // Открыть игру на чистом профиле; ошибки страницы собираются в page.errors
 export async function openGame(env, contextOptions = { viewport: { width: 1280, height: 720 } }) {
   const { quality, ...ctxOptions } = contextOptions;
-  const context = await env.browser.newContext(ctxOptions);
+  const browser = env.fresh ? await env.fresh() : env.browser;
+  const context = await browser.newContext(ctxOptions);
   const page = await context.newPage();
   page.setDefaultTimeout(60000);
   page.setDefaultNavigationTimeout(90000);
