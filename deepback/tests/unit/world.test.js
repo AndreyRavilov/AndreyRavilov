@@ -67,6 +67,13 @@ test('постройки склеены в несколько сеток, при
   assert.equal(city.group.children.filter((c) => c.userData.dynamic).length, city.pickups.length + city.leeches.length);
 });
 
+test('у всех склеенных сеток с цветами вершин есть цвет (иначе они чёрные)', () => {
+  const city = makeCity(13, 2);
+  for (const m of city.group.children.filter((c) => c.userData.baked)) {
+    if (m.material.vertexColors) assert.ok(m.geometry.attributes.color, 'нет цвета вершин');
+  }
+});
+
 test('в городе есть все виды припасов', () => {
   const city = makeCity(5);
   const types = new Set(city.pickups.map((p) => p.type));

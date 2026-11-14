@@ -35,6 +35,7 @@ const M = {
 };
 M.trim = new THREE.MeshStandardMaterial({ color: 0x2c2620, roughness: 0.85 });
 M.deck = new THREE.MeshStandardMaterial({ color: 0x7a5c40, roughness: 0.9 });
+M.ao = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.45, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 });
 M.net = new THREE.MeshStandardMaterial({ color: 0x3a3a30, roughness: 1, transparent: true, alphaTest: 0.3, side: THREE.DoubleSide });
 export const MATERIALS = M;
 // Текстура мягкого свечения задаётся из браузера (в Node её нет)
@@ -46,10 +47,35 @@ const ROOFS = [0x7a3b2a, 0x3d4b52, 0x5b4636, 0x2f3d3a];
 M.arkWall = M.steel.clone();
 M.arkDome = M.rust.clone();
 
+// Потёртости: у земли стена темнее и зеленее (морская сырость), к верху — светлее
+function grime(geo, h, groundLocal) {
+  const pos = geo.attributes.position;
+  const col = new Float32Array(pos.count * 3);
+  for (let i = 0; i < pos.count; i++) {
+    const y = pos.getY(i) + h / 2; // от низа стены
+    const k = Math.min(1, Math.max(0, (y - groundLocal) / 2.5));
+    col[i * 3] = 0.55 + 0.45 * k;
+    col[i * 3 + 1] = 0.62 + 0.38 * k;
+    col[i * 3 + 2] = 0.55 + 0.45 * k;
+  }
+  geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  return geo;
+}
+
+// Мягкая тень-пятно у основания построек
+let AO_GEO = null;
+function aoBlob(w, d) {
+  if (!AO_GEO) AO_GEO = new THREE.CircleGeometry(0.5, 24).rotateX(-Math.PI / 2);
+  const m = new THREE.Mesh(AO_GEO, M.ao);
+  m.scale.set(w, 1, d);
+  m.userData.ao = true;
+  return m;
+}
+
 function std(color) {
   return new THREE.MeshStandardMaterial({ color, roughness: 0.9 });
 }
-const wallMats = WALLS.map(std);
+const wallMats = WALLS.map((hex) => new THREE.MeshStandardMaterial({ color: hex, roughness: 0.9, vertexColors: true }));
 const roofMats = ROOFS.map(std);
 M.walls = wallMats;
 M.roofs = roofMats;
@@ -303,6 +329,9 @@ export class City {
         let geo = m.geometry.index ? m.geometry.toNonIndexed() : m.geometry.clone();
         for (const k of Object.keys(geo.attributes)) if (!['position', 'normal', 'uv', 'color'].includes(k)) geo.deleteAttribute(k);
         if (!geo.attributes.uv) geo.setAttribute('uv', new THREE.Float32BufferAttribute(new Float32Array(geo.attributes.position.count * 2), 2));
+        // материалу с цветами вершин нужен цвет у каждой вершины, иначе деталь станет чёрной
+        if (m.material.vertexColors && !geo.attributes.color) geo.setAttribute('color', new THREE.Float32BufferAttribute(new Float32Array(geo.attributes.position.count * 3).fill(1), 3));
+        if (!m.material.vertexColors && geo.attributes.color) geo.deleteAttribute('color');
         geo.applyMatrix4(m.matrixWorld);
         const key = `${m.material.uuid}|${geo.attributes.color ? 'c' : ''}`;
         if (!buckets.has(key)) buckets.set(key, { mat: m.material, geos: [], shadow: m.castShadow });
@@ -344,7 +373,7 @@ export class City {
     const h = 4 + rng() * 6 + 1.5;
     const g = new THREE.Group();
     g.position.set(x, base, z);
-    const walls = new THREE.Mesh(boxProjectUV(new THREE.BoxGeometry(w, h, d), 2.4), wallMats[Math.floor(rng() * wallMats.length)]);
+    const walls = new THREE.Mesh(grime(boxProjectUV(new THREE.BoxGeometry(w, h, d, 1, 4, 1), 2.4), h, backHeight(x, z) - base), wallMats[Math.floor(rng() * wallMats.length)]);
     walls.position.y = h / 2;
     g.add(walls);
     // угловые столбы каркаса
@@ -490,6 +519,9 @@ export class City {
     shadow(g);
     this.group.add(g);
     this.colliders.push({ type: 'box', minX: x - hx, maxX: x + hx, minZ: z - hz, maxZ: z + hz, bottom: base, top });
+    const blob = aoBlob(w * 1.5, d * 1.5);
+    blob.position.set(x, backHeight(x, z) + 0.04, z);
+    this.group.add(blob);
   }
 
   addArch(rng, x, z) {
@@ -653,6 +685,9 @@ export function inside(c, x, z, r) {
 // TEX — модуль textures.js.
 export function dressMaterials(TEX) {
   GLOW.tex = TEX.glowDot();
+  M.ao.map = TEX.glowDot();
+  M.ao.opacity = 0.55;
+  M.ao.needsUpdate = true;
   WALLS.forEach((hex, i) => {
     const c = new THREE.Color(hex);
     const t = TEX.planks([Math.min(235, c.r * 255 * 1.75), Math.min(235, c.g * 255 * 1.75), Math.min(235, c.b * 255 * 1.75)]);
@@ -695,6 +730,12 @@ export function dressMaterials(TEX) {
   M.net.alphaMap = TEX.netTexture();
   M.net.alphaMap.repeat.set(3, 2);
   M.net.needsUpdate = true;
+  // кость арок: шероховатая, в трещинах
+  const bone = TEX.whaleSkin();
+  M.bone.bumpMap = bone.bump;
+  M.bone.bumpScale = 1.2;
+  M.bone.roughnessMap = bone.rough;
+  M.bone.needsUpdate = true;
   metal(M.steel, [96, 108, 114], 1, 1);
   metal(M.rust, [118, 78, 56], 1, 1);
   metal(M.arkWall, [98, 110, 116], 6, 2);

@@ -87,7 +87,7 @@ const ocean = new Ocean(scene, { detail: TEX.waveDetail() });
 dressWhale(whale, TEX);
 dressMaterials(TEX);
 // каустика на коже Матери и на постройках
-addCaustics(whale.userData.skin);
+addCaustics(whale.userData.skin, { wet: true });
 for (const k of ['steel', 'rust', 'arkWall', 'arkDome', 'bone', 'trim']) addCaustics(MATERIALS[k]);
 for (const mtl of MATERIALS.walls || []) addCaustics(mtl);
 for (const mtl of MATERIALS.roofs || []) addCaustics(mtl);
@@ -1883,6 +1883,21 @@ function updateAmbient(dt, p) {
   city.beamMat.uniforms.opacity.value = Math.max(0, Math.min(1, (p - 0.45) / 0.3)) * 0.5 * (S.underK > 0.5 ? 0 : 1);
 }
 
+// Где солнце на экране — для лучей. Нет лучей ночью, под водой, в Ковчеге и если солнце за кадром.
+const sunV = new THREE.Vector3();
+function sunOnScreen() {
+  if (S.mode === 'ark' || S.mode === 'night' || (S.underK || 0) > 0.3 || sunDir.y < -0.02) return null;
+  if (S.weather === 'storm' || S.weather === 'fog') return null;
+  sunV.copy(camera.position).addScaledVector(sunDir, 1000).project(camera);
+  if (sunV.z > 1) return null;
+  const x = (sunV.x + 1) / 2;
+  const y = (sunV.y + 1) / 2;
+  const off = Math.max(Math.abs(sunV.x), Math.abs(sunV.y));
+  if (off > 1.05) return null; // солнце за кадром — лучей нет, иначе «лучи» тянутся от фонарей
+  const k = Math.max(0, 1 - Math.max(0, off - 0.75) * 3) * (0.6 + (1 - Math.min(1, sunDir.y * 2)) * 0.8);
+  return k > 0.02 ? { x, y, k, color: sun.color } : null;
+}
+
 // Небо, солнце, туман и «подводность» вокруг текущей камеры
 function cameraEnv(dark) {
   sky.position.copy(camera.position);
@@ -2015,7 +2030,7 @@ function frame() {
   }
   pressed.clear();
   autoQuality(rawDt);
-  post.render(dt, { under: S.underK || 0, time: S.time });
+  post.render(dt, { under: S.underK || 0, time: S.time, sun: sunOnScreen() });
   requestAnimationFrame(frame);
 }
 frame();

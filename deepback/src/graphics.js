@@ -102,6 +102,37 @@ const GradeShader = {
     }`,
 };
 
+// ---------- Лучи солнца: радиальное размытие ярких пикселей к солнцу ----------
+const GodRaysShader = {
+  uniforms: {
+    tDiffuse: { value: null },
+    uSun: { value: new THREE.Vector2(0.5, 0.5) },
+    uStrength: { value: 0 },
+    uColor: { value: new THREE.Color(1, 0.9, 0.7) },
+  },
+  vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`,
+  fragmentShader: /* glsl */ `
+    uniform sampler2D tDiffuse; uniform vec2 uSun; uniform float uStrength; uniform vec3 uColor;
+    varying vec2 vUv;
+    void main() {
+      vec4 base = texture2D(tDiffuse, vUv);
+      if (uStrength <= 0.001) { gl_FragColor = base; return; }
+      vec2 d = (uSun - vUv) / 28.0;
+      vec2 uv = vUv;
+      float acc = 0.0;
+      float w = 1.0;
+      for (int i = 0; i < 28; i++) {
+        uv += d;
+        vec3 s = texture2D(tDiffuse, uv).rgb;
+        float l = max(0.0, dot(s, vec3(0.299, 0.587, 0.114)) - 0.85);
+        acc += l * w;
+        w *= 0.95;
+      }
+      float fall = 1.0 - smoothstep(0.0, 0.9, distance(vUv, uSun));
+      gl_FragColor = vec4(base.rgb + uColor * acc * 0.09 * uStrength * fall, base.a);
+    }`,
+};
+
 // ---------- Пост-обработка с уровнями качества ----------
 export const QUALITY = {
   low: { composer: false, smaa: false, bloom: false, shadows: false, shadowSize: 512, pixelRatio: 1 },
@@ -146,6 +177,8 @@ export class Post {
         this.bloom = new UnrealBloomPass(new THREE.Vector2(w, h), 0.55, 0.55, 0.86);
         c.addPass(this.bloom);
       }
+      this.rays = q.smaa ? new ShaderPass(GodRaysShader) : null;
+      if (this.rays) c.addPass(this.rays);
       this.grade = new ShaderPass(GradeShader);
       c.addPass(this.grade);
       c.addPass(new OutputPass());
@@ -169,7 +202,7 @@ export class Post {
   }
 
   // under: 0..1 — насколько камера под водой; tint — цветокоррекция кадра
-  render(dt, { under = 0, time = 0, tint = null, bloom = null } = {}) {
+  render(dt, { under = 0, time = 0, tint = null, bloom = null, sun = null } = {}) {
     if (!this.composer) {
       this.renderer.render(this.scene, this.camera);
       return;
@@ -179,6 +212,15 @@ export class Post {
     u.uTime.value = time;
     if (tint) u.uTint.value.copy(tint);
     if (this.bloom && bloom !== null) this.bloom.strength = bloom;
+    if (this.rays) {
+      // sun: { x, y } в экранных координатах 0..1 и сила лучей
+      const r = this.rays.uniforms;
+      r.uStrength.value = sun ? sun.k : 0;
+      if (sun) {
+        r.uSun.value.set(sun.x, sun.y);
+        r.uColor.value.copy(sun.color);
+      }
+    }
     this.composer.render(dt);
   }
 }
@@ -191,7 +233,7 @@ export const CAUSTICS = {
   uCColor: { value: new THREE.Color(0x9fe8ff) },
 };
 
-export function addCaustics(mat) {
+export function addCaustics(mat, { wet = false } = {}) {
   mat.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, CAUSTICS);
     shader.vertexShader = shader.vertexShader
@@ -212,6 +254,13 @@ export function addCaustics(mat) {
           c = clamp(c / 4.0, 0.0, 2.0); c = 1.17 - pow(c, 1.4);
           return clamp(pow(abs(c), 8.0), 0.0, 1.5);
         }`)
+      .replace('#include <color_fragment>', wet ? `#include <color_fragment>
+        // мокрая полоса у кромки воды: темнее и с бликом
+        float aboveW = vWPosC.y - uLevel;
+        float wetK = aboveW > -0.2 ? 1.0 - smoothstep(0.0, 2.4, aboveW) : 0.0;
+        diffuseColor.rgb *= mix(1.0, 0.62, wetK);` : '#include <color_fragment>')
+      .replace('#include <roughnessmap_fragment>', wet ? `#include <roughnessmap_fragment>
+        roughnessFactor *= mix(1.0, 0.3, wetK);` : '#include <roughnessmap_fragment>')
       .replace('#include <dithering_fragment>', `#include <dithering_fragment>
         float depthC = uLevel - vWPosC.y;
         if (depthC > 0.0 && uCStrength > 0.001) {
@@ -220,6 +269,6 @@ export function addCaustics(mat) {
           gl_FragColor.rgb += uCColor * cs * k * uCStrength;
         }`);
   };
-  mat.customProgramCacheKey = () => 'caustics';
+  mat.customProgramCacheKey = () => (wet ? 'caustics-wet' : 'caustics');
   mat.needsUpdate = true;
 }

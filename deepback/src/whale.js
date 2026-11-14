@@ -58,7 +58,12 @@ export function buildWhale() {
       const scar = Math.abs(Math.sin(x * 23 + z * 41 + Math.sin(z * 9) * 3)) > 0.985;
       c.setHSL(0.57, 0.2, 0.14 + n * 0.045);
       if (scar) c.setHSL(0.55, 0.1, 0.3);
-      if (n > 0.45) c.offsetHSL(0, -0.06, 0.05); // светлые пятна
+      if (n > 0.45) c.offsetHSL(0, -0.06, 0.05);
+      // светлые пятна, как у китовой акулы: ряды точек вдоль спины
+      const sx = x * 38;
+      const sz = z * 95 + Math.sin(x * 9) * 1.5;
+      const spot = Math.max(0, 1 - Math.hypot(sx - Math.round(sx), sz - Math.round(sz)) * 3.2);
+      if (y > 0.25 && spot > 0) c.offsetHSL(0, -0.08, spot * 0.16); // светлые пятна
     } else {
       const groove = Math.sin(x * 55) > 0.55;
       const t = Math.min(1, -y / 1.4);
