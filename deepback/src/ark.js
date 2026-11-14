@@ -152,14 +152,19 @@ export class ArkInterior {
       floorMat.map = p.map;
       floorMat.bumpMap = p.bump;
       floorMat.color.set(0xffffff);
-      const w = TEX.rustyMetal([100, 112, 118]);
-      for (const k of ['map', 'bump', 'rough']) w[k].repeat.set(8, 2);
-      Object.assign(wallMat, { map: w.map, bumpMap: w.bump, roughnessMap: w.rough, roughness: 1 });
+      // стены — крашеные клёпаные листы (морская зелень), потолок — дощатый
+      const w = TEX.paintedPanels([84, 122, 116]);
+      for (const k of ['map', 'bump', 'rough']) w[k].repeat.set(10, 2);
+      Object.assign(wallMat, { map: w.map, bumpMap: w.bump, roughnessMap: w.rough, roughness: 1, metalness: 0.25 });
       wallMat.color.set(0xffffff);
-      const d = TEX.rustyMetal([130, 72, 50]);
-      for (const k of ['map', 'bump', 'rough']) d[k].repeat.set(6, 2);
-      Object.assign(domeMat, { map: d.map, bumpMap: d.bump, roughnessMap: d.rough, roughness: 1 });
+      const d = TEX.planks([128, 96, 66]);
+      d.map.repeat.set(18, 3);
+      d.bump.repeat.set(18, 3);
+      Object.assign(domeMat, { map: d.map, bumpMap: d.bump, bumpScale: 1.2, roughness: 0.9, metalness: 0 });
       domeMat.color.set(0xffffff);
+      this.wainscot = TEX.planks([118, 84, 56]);
+      this.wainscot.map.repeat.set(26, 1);
+      this.wainscot.bump.repeat.set(26, 1);
     }
     const floor = new THREE.Mesh(new THREE.CircleGeometry(ARK_R + 0.2, 48), floorMat);
     floor.rotation.x = -Math.PI / 2;
@@ -169,6 +174,19 @@ export class ArkInterior {
     wall.position.y = 3.5;
     wall.receiveShadow = true;
     scene.add(wall);
+    // деревянная обшивка снизу и поручень над ней
+    const wainMat = std(0x7a5a3e);
+    if (this.wainscot) Object.assign(wainMat, { map: this.wainscot.map, bumpMap: this.wainscot.bump, bumpScale: 1.2 });
+    if (this.wainscot) wainMat.color.set(0xffffff);
+    wainMat.side = THREE.BackSide;
+    const wain = new THREE.Mesh(new THREE.CylinderGeometry(ARK_R + 0.1, ARK_R + 0.1, 1.4, 48, 1, true), wainMat);
+    wain.position.y = 0.7;
+    wain.receiveShadow = true;
+    scene.add(wain);
+    const rail = new THREE.Mesh(new THREE.TorusGeometry(ARK_R + 0.02, 0.06, 6, 64), std(0x5a3a22));
+    rail.rotation.x = Math.PI / 2;
+    rail.position.y = 1.42;
+    scene.add(rail);
     const dome = new THREE.Mesh(new THREE.SphereGeometry(ARK_R + 0.2, 40, 16, 0, Math.PI * 2, 0, Math.PI / 2), domeMat);
     dome.position.y = 7;
     scene.add(dome);

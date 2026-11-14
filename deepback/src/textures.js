@@ -103,6 +103,75 @@ export function planks(tint = [120, 95, 70], size = 256) {
   return { map: finish(col), bump: finish(bump, 1, false) };
 }
 
+// --- Крашеные доски: облупившаяся краска, под ней серое дерево, потёки ---
+export function paintedPlanks(paintRGB = [120, 140, 150], size = 256) {
+  const N = 6;
+  const pick = (k) => hash(k, 3, 99);
+  const wood = [128, 112, 94];
+  const peel = (u, v) => smoothstepJS(0.66, 0.7, fbm(u * 14, v * 7, 14, 4, 61) * 0.7 + fbm(u * 3, v * 3, 3, 3, 64) * 0.3 + (1 - v) * 0.05);
+  const col = paint(size, (u, v) => {
+    const k = Math.floor(u * N);
+    const lu = u * N - k;
+    const grain = fbm(u * 6 + k * 3.1, v * 40, 40, 3, 7);
+    const pk = peel(u, v);
+    const shade = 0.82 + pick(k) * 0.24;
+    const fade = 0.88 + fbm(u * 3, v * 6, 3, 3, 62) * 0.18;
+    const streak = fbm(u * 50, v * 2, 50, 2, 63);
+    let r = paintRGB[0] * fade, g = paintRGB[1] * fade, b = paintRGB[2] * fade;
+    // потёки ржавчины от гвоздей
+    const drip = Math.max(0, (streak - 0.68) * 2.2) * (1 - v);
+    r = r * (1 - drip) + 110 * drip; g = g * (1 - drip) + 70 * drip; b = b * (1 - drip) + 45 * drip;
+    const wg = 0.75 + grain * 0.4;
+    r = r * (1 - pk) + wood[0] * wg * pk;
+    g = g * (1 - pk) + wood[1] * wg * pk;
+    b = b * (1 - pk) + wood[2] * wg * pk;
+    let m = shade * (0.94 + grain * 0.1 * (1 - pk));
+    if (lu < 0.035 || lu > 0.965) m *= 0.4;
+    const nail = (Math.abs(lu - 0.5) < 0.05 && (Math.abs(v - 0.12) < 0.012 || Math.abs(v - 0.88) < 0.012)) ? 0.45 : 1;
+    m *= nail;
+    return [clamp(r * m), clamp(g * m), clamp(b * m)];
+  });
+  const bump = paint(size, (u, v) => {
+    const k = Math.floor(u * N);
+    const lu = u * N - k;
+    const grain = fbm(u * 6 + k * 3.1, v * 40, 40, 3, 7);
+    const pk = peel(u, v);
+    let h = 180 - pk * 35 + grain * 40 * pk;
+    if (lu < 0.035 || lu > 0.965) h = 30;
+    return clamp(h);
+  });
+  const rough = paint(size, (u, v) => clamp(160 + peel(u, v) * 80));
+  return { map: finish(col), bump: finish(bump, 1, false), rough: finish(rough, 1, false) };
+}
+
+// --- Крашеные клёпаные панели (внутри Ковчега): краска, потёртости, немного ржавчины у швов ---
+export function paintedPanels(paintRGB = [96, 128, 124], size = 256) {
+  const col = paint(size, (u, v) => {
+    const pu = (u * 4) % 1;
+    const pv = (v * 2) % 1;
+    const edge = Math.min(pu, 1 - pu, pv, 1 - pv);
+    const wear = smoothstepJS(0.7, 0.76, fbm(u * 24, v * 12, 24, 4, 71));
+    const rust = Math.max(0, 1 - edge * 30) * smoothstepJS(0.45, 0.6, fbm(u * 20, v * 20, 20, 3, 72)) * 0.8;
+    const n = 0.9 + fbm(u * 30, v * 30, 30, 2, 73) * 0.15;
+    let r = paintRGB[0] * n, g = paintRGB[1] * n, b = paintRGB[2] * n;
+    r = r * (1 - wear) + 150 * wear; g = g * (1 - wear) + 150 * wear; b = b * (1 - wear) + 146 * wear;
+    r = r * (1 - rust) + 120 * rust; g = g * (1 - rust) + 66 * rust; b = b * (1 - rust) + 38 * rust;
+    let m = 1;
+    if (edge < 0.012) m = 0.45;
+    const rv = Math.abs(edge - 0.045) < 0.012 && Math.abs(((pu + pv) * 12) % 1 - 0.5) < 0.18 ? 1.3 : 1;
+    return [clamp(r * m * rv), clamp(g * m * rv), clamp(b * m * rv)];
+  });
+  const bump = paint(size, (u, v) => {
+    const pu = (u * 4) % 1;
+    const pv = (v * 2) % 1;
+    const edge = Math.min(pu, 1 - pu, pv, 1 - pv);
+    const rv = Math.abs(edge - 0.045) < 0.012 && Math.abs(((pu + pv) * 12) % 1 - 0.5) < 0.18 ? 80 : 0;
+    return clamp((edge < 0.012 ? 40 : 150) + rv);
+  });
+  const rough = paint(size, (u, v) => clamp(110 + smoothstepJS(0.7, 0.76, fbm(u * 24, v * 12, 24, 4, 71)) * 60));
+  return { map: finish(col), bump: finish(bump, 1, false), rough: finish(rough, 1, false) };
+}
+
 // --- Черепица / дранка: ряды со сдвигом ---
 export function shingles(tint = [120, 60, 45], size = 256) {
   const R = 8;
@@ -116,7 +185,13 @@ export function shingles(tint = [120, 60, 45], size = 256) {
     const n = fbm(u * 16, v * 16, 16, 3, 3);
     let m = t * (0.8 + n * 0.3) * (0.65 + lv * 0.45);
     if (lu < 0.03) m *= 0.4;
-    return [clamp(tint[0] * m), clamp(tint[1] * m), clamp(tint[2] * m)];
+    // мох и птичий помёт — пятнами
+    const moss = smoothstepJS(0.6, 0.72, fbm(u * 4, v * 4, 4, 4, 81)) * (0.4 + (1 - lv) * 0.6);
+    const lichen = Math.max(0, fbm(u * 24, v * 24, 24, 2, 82) - 0.72) * 3;
+    const r = tint[0] * (1 - moss * 0.6) + 78 * moss * 0.6 + lichen * 60;
+    const g = tint[1] * (1 - moss * 0.6) + 96 * moss * 0.6 + lichen * 60;
+    const b = tint[2] * (1 - moss * 0.6) + 52 * moss * 0.6 + lichen * 52;
+    return [clamp(r * m), clamp(g * m), clamp(b * m)];
   });
   const bump = paint(size, (u, v) => {
     const lv = v * R - Math.floor(v * R);
@@ -162,13 +237,55 @@ export function whaleSkin(size = 512) {
     const pores = fbm(u * 64, v * 64, 64, 2, 22);
     const blotch = fbm(u * 2, v * 2, 2, 4, 26);
     const scar = Math.max(0, 1 - Math.abs(fbm(u * 3, v * 3, 3, 4, 23) - 0.5) * 40);
-    return clamp(120 - wrinkle * 70 + pores * 30 + blotch * 40 - scar * 60);
+    return clamp(120 - wrinkle * 38 + pores * 34 + blotch * 40 - scar * 40 + barnacle(u, v) * 70);
   });
   const rough = paint(size, (u, v) => {
     const wet = fbm(u * 5, v * 5, 5, 4, 24);
-    return clamp(120 + (wet - 0.5) * 200);
+    const barn = barnacle(u, v);
+    return clamp(175 + (wet - 0.5) * 140 + barn * 60);
   });
-  return { bump: finish(bump, 1, false), rough: finish(rough, 1, false) };
+  // цвет шкуры: тёплый сланец с бурыми разводами, бледными шрамами,
+  // зеленоватой тиной в складках и колониями белёсых ракушек
+  const map = paint(size, (u, v) => {
+    const blotch = fbm(u * 2, v * 2, 2, 5, 26);
+    const mott = fbm(u * 9, v * 9, 9, 4, 27);
+    const algae = smoothstepJS(0.55, 0.75, fbm(u * 3 + 7, v * 3, 3, 4, 28));
+    const scar = Math.max(0, 1 - Math.abs(fbm(u * 3, v * 3, 3, 4, 23) - 0.5) * 40);
+    const pores = fbm(u * 64, v * 64, 64, 2, 22);
+    const barn = barnacle(u, v);
+    let r = 112, g = 106, b = 100;
+    const dk = 0.72 + blotch * 0.42 + (mott - 0.5) * 0.18 + (pores - 0.5) * 0.08;
+    r *= dk; g *= dk; b *= dk * 0.98;
+    // бурые пятна
+    const brown = smoothstepJS(0.5, 0.7, mott) * 0.35;
+    r += brown * 18; g += brown * 4; b -= brown * 10;
+    // тина
+    r = r * (1 - algae * 0.35) + 70 * algae * 0.35;
+    g = g * (1 - algae * 0.35) + 92 * algae * 0.35;
+    b = b * (1 - algae * 0.35) + 60 * algae * 0.35;
+    // шрамы
+    r += scar * 22; g += scar * 21; b += scar * 20;
+    // ракушки
+    const bk = barn * 0.7;
+    r = r * (1 - bk) + 190 * bk; g = g * (1 - bk) + 184 * bk; b = b * (1 - bk) + 170 * bk;
+    return [clamp(r), clamp(g), clamp(b)];
+  });
+  return { map: finish(map), bump: finish(bump, 1, false), rough: finish(rough, 1, false) };
+}
+
+// колонии ракушек: кольца, собранные в пятна
+function barnacle(u, v) {
+  const colony = smoothstepJS(0.62, 0.72, fbm(u * 4, v * 4, 4, 3, 29));
+  if (colony <= 0) return 0;
+  const N = 110;
+  const cx = Math.floor(u * N);
+  const cy = Math.floor(v * N);
+  const ox = hash(cx, cy, 51) * 0.5 + 0.25;
+  const oy = hash(cx, cy, 52) * 0.5 + 0.25;
+  const d = Math.hypot(u * N - cx - ox, v * N - cy - oy);
+  const r = 0.18 + hash(cx, cy, 53) * 0.14;
+  const ring = d < r ? (d > r * 0.45 ? 1 : 0.35) : 0;
+  return ring * colony * (hash(cx, cy, 54) < 0.75 ? 1 : 0);
 }
 
 function smoothstepJS(a, b, x) {

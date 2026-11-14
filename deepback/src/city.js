@@ -44,8 +44,9 @@ export const MATERIALS = M;
 // Текстура мягкого свечения задаётся из браузера (в Node её нет)
 export const GLOW = { tex: null };
 
-const WALLS = [0x6f5a46, 0x4f6b6a, 0x7a6a55, 0x5d4a3f, 0x3f5560, 0x8a6e4b, 0x5a5f4c];
-const ROOFS = [0x7a3b2a, 0x3d4b52, 0x5b4636, 0x2f3d3a];
+// выцветшая краска: охра, морская зелень, красный сурик, кремовый, серо-голубой, шалфей, бурый
+const WALLS = [0xa8834a, 0x4f8580, 0x9a4e3e, 0xc2b394, 0x5a7690, 0x7f8f66, 0x84644a];
+const ROOFS = [0x8a4632, 0x56646a, 0x6e5640, 0x44564e];
 // Ковчег — отдельные материалы: у цилиндра свои UV, текстуре нужен свой повтор
 M.arkWall = M.steel.clone();
 M.arkDome = M.rust.clone();
@@ -707,17 +708,20 @@ export function dressMaterials(TEX) {
   M.ao.needsUpdate = true;
   WALLS.forEach((hex, i) => {
     const c = new THREE.Color(hex);
-    const t = TEX.planks([Math.min(235, c.r * 255 * 1.75), Math.min(235, c.g * 255 * 1.75), Math.min(235, c.b * 255 * 1.75)]);
+    const k = 255 * 1.05;
+    const t = TEX.paintedPlanks([Math.min(235, c.r * k), Math.min(235, c.g * k), Math.min(235, c.b * k)]);
     const m = wallMats[i];
     m.map = t.map;
     m.bumpMap = t.bump;
     m.bumpScale = 1.4;
+    m.roughnessMap = t.rough;
+    m.roughness = 1;
     m.color.set(0xffffff);
     m.needsUpdate = true;
   });
   ROOFS.forEach((hex, i) => {
     const c = new THREE.Color(hex);
-    const t = TEX.shingles([c.r * 255 * 1.3, c.g * 255 * 1.3, c.b * 255 * 1.3]);
+    const t = TEX.shingles([c.r * 255 * 1.9, c.g * 255 * 1.9, c.b * 255 * 1.9]);
     t.map.repeat.set(3, 3);
     t.bump.repeat.set(3, 3);
     const m = roofMats[i];

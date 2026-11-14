@@ -56,18 +56,19 @@ export function buildWhale() {
     if (y > -0.25) {
       const n = n3(x * 6, y * 6, z * 14);
       const scar = Math.abs(Math.sin(x * 23 + z * 41 + Math.sin(z * 9) * 3)) > 0.985;
-      c.setHSL(0.57, 0.2, 0.14 + n * 0.045);
-      if (scar) c.setHSL(0.55, 0.1, 0.3);
-      if (n > 0.45) c.offsetHSL(0, -0.06, 0.05);
+      // цвет шкуры даёт текстура; вершины добавляют крупные пятна и тень к бокам
+      c.setHSL(0.07, 0.08, 0.44 + n * 0.08 + Math.max(0, y) * 0.06);
+      if (scar) c.setHSL(0.08, 0.06, 0.55);
+      if (n > 0.45) c.offsetHSL(0, -0.03, 0.05);
       // светлые пятна, как у китовой акулы: ряды точек вдоль спины
       const sx = x * 38;
       const sz = z * 95 + Math.sin(x * 9) * 1.5;
       const spot = Math.max(0, 1 - Math.hypot(sx - Math.round(sx), sz - Math.round(sz)) * 3.2);
-      if (y > 0.25 && spot > 0) c.offsetHSL(0, -0.08, spot * 0.16); // светлые пятна
+      if (y > 0.25 && spot > 0) c.offsetHSL(0, -0.04, spot * 0.14); // светлые пятна
     } else {
       const groove = Math.sin(x * 55) > 0.55;
       const t = Math.min(1, -y / 1.4);
-      c.setHSL(0.56, 0.12, 0.3 + t * 0.25 + (groove ? -0.08 : 0));
+      c.setHSL(0.08, 0.06, 0.42 + t * 0.25 + (groove ? -0.1 : 0));
     }
     colors[i * 3] = c.r;
     colors[i * 3 + 1] = c.g;
@@ -191,10 +192,11 @@ export function buildWhale() {
 export function dressWhale(whale, TEX) {
   const t = TEX.whaleSkin();
   const skin = whale.userData.skin;
+  skin.map = t.map;
   skin.bumpMap = t.bump;
-  skin.bumpScale = 1.6;
+  skin.bumpScale = 1.1;
   skin.roughnessMap = t.rough;
-  skin.roughness = 0.85;
-  skin.color.set(0x9aa8ae);
+  skin.roughness = 1;
+  skin.color.set(0xffffff);
   skin.needsUpdate = true;
 }
