@@ -565,15 +565,42 @@ export class City {
     const y = backHeight(x, z);
     const g = new THREE.Group();
     g.position.set(x, y, z);
-    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.16, 4.2, 6), M.dark);
-    pole.position.y = 2.1;
+    // чугунный фонарь: ступенчатое основание, столб с кольцами, гнутый кронштейн,
+    // фонарь-клетка с колпаком и светящимся стеклом
+    const base = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.3, 0.45, 8), M.dark);
+    base.position.y = 0.22;
+    g.add(base);
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.12, 4.0, 8), M.dark);
+    pole.position.y = 2.2;
     g.add(pole);
-    const arm = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.1, 0.1), M.dark);
-    arm.position.set(0.5, 4.1, 0);
+    for (const yy of [0.55, 2.4, 4.05]) {
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.12, 0.035, 6, 12), M.dark);
+      ring.rotation.x = Math.PI / 2;
+      ring.position.y = yy;
+      g.add(ring);
+    }
+    const arm = new THREE.Mesh(LAMP_ARM, M.dark);
+    arm.position.y = 3.9;
     g.add(arm);
-    const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.32, 10, 8), M.lamp);
-    lamp.position.set(1.0, 3.75, 0);
+    const lamp = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.15, 0.42, 6), M.lamp);
+    lamp.position.set(1.0, 3.72, 0);
     g.add(lamp);
+    for (let k = 0; k < 6; k++) {
+      const a = (k / 6) * Math.PI * 2 + Math.PI / 6;
+      const bar = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.46, 0.03), M.dark);
+      bar.position.set(1.0 + Math.cos(a) * 0.19, 3.72, Math.sin(a) * 0.19);
+      g.add(bar);
+    }
+    const cap = new THREE.Mesh(new THREE.ConeGeometry(0.3, 0.26, 6), M.dark);
+    cap.position.set(1.0, 4.06, 0);
+    g.add(cap);
+    const finial = new THREE.Mesh(new THREE.SphereGeometry(0.05, 6, 4), M.dark);
+    finial.position.set(1.0, 4.22, 0);
+    g.add(finial);
+    const bottom = new THREE.Mesh(new THREE.ConeGeometry(0.16, 0.12, 6), M.dark);
+    bottom.rotation.x = Math.PI;
+    bottom.position.set(1.0, 3.45, 0);
+    g.add(bottom);
     shadow(g);
     this.group.add(g);
     this.colliders.push({ type: 'box', minX: x - 0.2, maxX: x + 0.2, minZ: z - 0.2, maxZ: z + 0.2, bottom: y - 1, top: y + 4.2 });
@@ -771,6 +798,17 @@ export class City {
     this.leeches.push({ mesh: g, segs, x, z, dir: rng() * Math.PI * 2, cool: 0, phase: rng() * 6, push: null });
   }
 }
+
+// Кронштейн фонаря: от столба выгибается дугой и спускается к фонарю, с завитком
+const LAMP_ARM = (() => {
+  const curve = new THREE.CatmullRomCurve3([
+    new THREE.Vector3(0, 0, 0), new THREE.Vector3(0.35, 0.28, 0), new THREE.Vector3(0.8, 0.32, 0), new THREE.Vector3(1.0, 0.25, 0),
+  ]);
+  const arm = new THREE.TubeGeometry(curve, 16, 0.045, 6);
+  const scroll = new THREE.TorusGeometry(0.12, 0.03, 6, 14, Math.PI * 1.5);
+  scroll.translate(0.22, 0.05, 0);
+  return mergeGeometries([arm.toNonIndexed(), scroll.toNonIndexed()]);
+})();
 
 // Рыба: тело вращением профиля, тёмная спина и серебристое брюхо,
 // полоса вдоль бока; раздвоенный хвост и спинной плавник
