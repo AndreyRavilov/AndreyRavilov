@@ -45,6 +45,7 @@ M.ao = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity
 M.dryFish = new THREE.MeshStandardMaterial({ color: 0x9a7b52, roughness: 0.55, metalness: 0.15 });
 M.float = new THREE.MeshStandardMaterial({ color: 0xd9542e, roughness: 0.6 });
 M.driftwood = new THREE.MeshStandardMaterial({ color: 0x8a7a66, roughness: 0.95 });
+M.relicStone = new THREE.MeshStandardMaterial({ color: 0x6e7b7c, roughness: 0.85, emissive: 0x0c2a2c, emissiveIntensity: 0.5 });
 M.brass = new THREE.MeshStandardMaterial({ color: 0xb08a50, metalness: 0.85, roughness: 0.35 });
 M.net = new THREE.MeshStandardMaterial({ color: 0x3a3a30, roughness: 1, transparent: true, alphaTest: 0.3, side: THREE.DoubleSide });
 export const MATERIALS = M;
@@ -939,9 +940,21 @@ export class City {
         g.add(band);
       }
     } else {
-      const r = new THREE.Mesh(new THREE.OctahedronGeometry(0.6, 0), M.relic);
-      r.scale.y = 1.5;
-      g.add(r);
+      // реликвия: каменная скрижаль со светящейся спиралью и два кольца вокруг
+      const tablet = new THREE.Mesh(RELIC.tablet, M.relicStone);
+      g.add(tablet);
+      const glyph = new THREE.Mesh(RELIC.spiral, M.relic);
+      glyph.position.z = 0.09;
+      g.add(glyph);
+      const back = glyph.clone();
+      back.position.z = -0.09;
+      back.rotation.y = Math.PI;
+      g.add(back);
+      for (const [rr, tilt] of [[0.85, 0.5], [1.0, -0.7]]) {
+        const ring = new THREE.Mesh(new THREE.TorusGeometry(rr, 0.025, 6, 48), M.relic);
+        ring.rotation.set(Math.PI / 2 + tilt, tilt, 0);
+        g.add(ring);
+      }
       const light = new THREE.PointLight(0x7ff6ff, 25, 18, 1.8);
       g.add(light);
     }
@@ -1020,6 +1033,30 @@ function mergeByMaterial(group) {
   }
   return out;
 }
+
+// Реликвия: скруглённая плита (вытянутый профиль) и спираль-резьба по ней
+const RELIC = (() => {
+  const sh = new THREE.Shape();
+  const w = 0.42;
+  const h = 0.62;
+  sh.moveTo(-w, -h);
+  sh.lineTo(w, -h);
+  sh.lineTo(w, h * 0.55);
+  sh.quadraticCurveTo(w, h, 0, h);
+  sh.quadraticCurveTo(-w, h, -w, h * 0.55);
+  sh.lineTo(-w, -h);
+  const tablet = new THREE.ExtrudeGeometry(sh, { depth: 0.14, bevelEnabled: true, bevelSize: 0.04, bevelThickness: 0.03, bevelSegments: 2, steps: 1 });
+  tablet.translate(0, 0, -0.07);
+  const pts = [];
+  for (let i = 0; i <= 80; i++) {
+    const t = i / 80;
+    const a = t * Math.PI * 5;
+    const r = 0.04 + t * 0.3;
+    pts.push(new THREE.Vector3(Math.cos(a) * r, Math.sin(a) * r * 1.2 + 0.05, 0));
+  }
+  const spiral = new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 120, 0.022, 5);
+  return { tablet, spiral };
+})();
 
 // Кран: брусья-уголки между точками, мачта-ферма 1×1 м, стрела-ферма до 16 м
 const CRANE = (() => {
