@@ -280,29 +280,115 @@ export class ArkInterior {
       leg.position.set(x, 0.47, z);
       bench.add(leg);
     }
-    for (let i = 0; i < 5; i++) {
-      const t = new THREE.Mesh(new THREE.BoxGeometry(0.08 + Math.random() * 0.25, 0.08, 0.3), std(0x8a96a0, { metalness: 0.8 }));
-      t.position.set(-0.8 + i * 0.4, 1.07, (Math.random() - 0.5) * 0.4);
-      t.rotation.y = Math.random();
-      bench.add(t);
+    // тиски, молоток, ключ, шестерни; за верстаком — щит с инструментом на гвоздях
+    const steel = std(0x8a96a0, { metalness: 0.8, roughness: 0.35 });
+    const darkSteel = std(0x3a3f44, { metalness: 0.7, roughness: 0.5 });
+    const vise = new THREE.Group();
+    vise.add(new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.18, 0.22), darkSteel));
+    const jaw = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.16, 0.06), darkSteel);
+    jaw.position.set(0, 0.02, -0.18);
+    vise.add(jaw);
+    const screw = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.4, 6), steel);
+    screw.rotation.z = Math.PI / 2;
+    screw.position.set(0, 0.02, -0.26);
+    vise.add(screw);
+    vise.position.set(-0.75, 1.12, -0.2);
+    bench.add(vise);
+    const hammer = new THREE.Group();
+    const hh = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.03, 0.4, 6), wood);
+    hh.rotation.z = Math.PI / 2;
+    hammer.add(hh);
+    const hd = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, 0.16), darkSteel);
+    hd.position.x = 0.2;
+    hammer.add(hd);
+    hammer.position.set(-0.1, 1.06, 0.1);
+    hammer.rotation.y = 0.5;
+    bench.add(hammer);
+    const wrench = new THREE.Group();
+    wrench.add(new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.02, 0.04), steel));
+    const wh = new THREE.Mesh(new THREE.TorusGeometry(0.05, 0.018, 6, 12, Math.PI * 1.6), steel);
+    wh.rotation.x = Math.PI / 2;
+    wh.position.x = 0.2;
+    wrench.add(wh);
+    wrench.position.set(0.35, 1.04, -0.15);
+    wrench.rotation.y = -0.4;
+    bench.add(wrench);
+    for (const [gx, gz, gr] of [[0.75, 0.1, 0.12], [0.6, -0.2, 0.08]]) {
+      const gear = new THREE.Mesh(new THREE.TorusGeometry(gr, gr * 0.35, 6, 10), std(0xb08a50, { metalness: 0.85, roughness: 0.35 }));
+      gear.rotation.x = Math.PI / 2;
+      gear.position.set(gx, 1.05, gz);
+      bench.add(gear);
+    }
+    const board = new THREE.Mesh(new THREE.BoxGeometry(2.0, 1.1, 0.06), std(0x7a5a3a));
+    board.position.set(0, 1.75, 0.42);
+    bench.add(board);
+    for (let i = 0; i < 6; i++) {
+      const tool = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.3 + (i % 3) * 0.1, 0.03), i % 2 ? steel : darkSteel);
+      tool.position.set(-0.8 + i * 0.32, 1.72, 0.38);
+      tool.rotation.z = (i % 2 ? 0.15 : -0.1);
+      bench.add(tool);
     }
     this.placeStation(bench, PLACES.tagir, 1.4, 'workshop');
 
     const rack = new THREE.Group();
-    const back = new THREE.Mesh(new THREE.BoxGeometry(2, 2.2, 0.15), wood);
-    back.position.y = 1.3;
-    rack.add(back);
-    for (let i = 0; i < 4; i++) {
-      const spear = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 2, 6), std(0xd8d2bf));
-      spear.position.set(-0.7 + i * 0.45, 1.3, -0.12);
-      spear.rotation.z = 0.08;
-      rack.add(spear);
+    // щит из досок с поперечинами
+    for (let i = 0; i < 5; i++) {
+      const plank = new THREE.Mesh(new THREE.BoxGeometry(0.39, 2.2, 0.08), std(i % 2 ? 0x6a4a30 : 0x5e4129));
+      plank.position.set(-0.8 + i * 0.4, 1.3, 0.04);
+      rack.add(plank);
     }
+    for (const yy of [0.6, 2.0]) {
+      const bar = new THREE.Mesh(new THREE.BoxGeometry(2.1, 0.12, 0.06), std(0x3f2a1a));
+      bar.position.set(0, yy, -0.04);
+      rack.add(bar);
+    }
+    const shaftMat = std(0xb89a70);
+    const tipMat = std(0xc8d2d8, { metalness: 0.9, roughness: 0.25 });
+    // остроги в ряд, наконечником вверх
     for (let i = 0; i < 3; i++) {
-      const bomb = new THREE.Mesh(new THREE.SphereGeometry(0.14, 10, 8), std(0xe8e4d8, { roughness: 1 }));
-      bomb.position.set(-0.4 + i * 0.4, 0.5, -0.25);
+      const spear = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.03, 2, 6), shaftMat);
+      spear.position.set(0.25 + i * 0.28, 1.25, -0.12);
+      rack.add(spear);
+      const tip = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.22, 4), tipMat);
+      tip.position.set(0.25 + i * 0.28, 2.33, -0.12);
+      rack.add(tip);
+    }
+    // два гарпуна накрест
+    for (const s2 of [-1, 1]) {
+      const h = new THREE.Group();
+      const sh = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 1.8, 6), shaftMat);
+      h.add(sh);
+      const t = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.25, 4), tipMat);
+      t.position.y = 1.0;
+      h.add(t);
+      for (const bs of [-1, 1]) {
+        const barb = new THREE.Mesh(new THREE.ConeGeometry(0.025, 0.14, 4), tipMat);
+        barb.position.set(bs * 0.06, 0.86, 0);
+        barb.rotation.z = bs * 2.6;
+        h.add(barb);
+      }
+      h.position.set(-0.5, 1.4, -0.14);
+      h.rotation.z = s2 * 0.55;
+      rack.add(h);
+    }
+    // ящик солевых бомб и ракетница на крюке
+    const crate = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.35, 0.45), std(0x6a4a30));
+    crate.position.set(-0.45, 0.18, -0.35);
+    rack.add(crate);
+    for (let i = 0; i < 4; i++) {
+      const bomb = new THREE.Mesh(new THREE.SphereGeometry(0.12, 10, 8), std(0xe8e4d8, { roughness: 1 }));
+      bomb.position.set(-0.72 + i * 0.18, 0.42, -0.35 + (i % 2) * 0.08);
       rack.add(bomb);
     }
+    const flare = new THREE.Group();
+    const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.32, 10), std(0xc23a2a, { roughness: 0.5 }));
+    barrel.rotation.z = Math.PI / 2;
+    flare.add(barrel);
+    const grip = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.18, 0.08), std(0x3a2a1e));
+    grip.position.set(-0.12, -0.1, 0);
+    flare.add(grip);
+    flare.position.set(0.55, 0.9, -0.12);
+    rack.add(flare);
     this.placeStation(rack, PLACES.bran, 1.4, 'armory');
 
     const lectern = new THREE.Group();
@@ -313,8 +399,27 @@ export class ArkInterior {
     desk.position.y = 1.15;
     desk.rotation.x = -0.35;
     lectern.add(desk);
-    const book = new THREE.Mesh(new THREE.BoxGeometry(0.65, 0.07, 0.45), std(0x5a1e1e));
-    book.position.set(0, 1.21, 0);
+    // раскрытая летопись: две половины переплёта, страницы, лента-закладка и перо
+    const book = new THREE.Group();
+    for (const s2 of [-1, 1]) {
+      const cover = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.03, 0.46), std(0x5a1e1e));
+      cover.position.set(s2 * 0.17, 0, 0);
+      cover.rotation.z = -s2 * 0.08;
+      book.add(cover);
+      const pages = new THREE.Mesh(new THREE.BoxGeometry(0.31, 0.04, 0.42), std(0xe8dcc0, { roughness: 1 }));
+      pages.position.set(s2 * 0.165, 0.035, 0);
+      pages.rotation.z = -s2 * 0.08;
+      book.add(pages);
+    }
+    const ribbon = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.005, 0.3), std(0xa02020));
+    ribbon.position.set(0.02, 0.06, 0.25);
+    ribbon.rotation.x = 0.6;
+    book.add(ribbon);
+    const quill = new THREE.Mesh(new THREE.ConeGeometry(0.02, 0.36, 5), std(0xf2ece0));
+    quill.rotation.z = 1.2;
+    quill.position.set(0.25, 0.08, -0.12);
+    book.add(quill);
+    book.position.set(0, 1.22, 0);
     book.rotation.x = -0.35;
     lectern.add(book);
     const candle = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.2, 8), new THREE.MeshStandardMaterial({ color: 0xfff0d0, emissive: 0xffc070, emissiveIntensity: 2 }));
@@ -470,6 +575,7 @@ export class ArkInterior {
     const z = Math.cos(p.a) * p.r;
     obj.position.set(x, 0, z);
     obj.lookAt(0, 0, 0);
+    obj.rotateY(Math.PI); // станции собраны «лицом» к -z — разворачиваем к залу
     obj.traverse((c) => c.isMesh && (c.castShadow = c.receiveShadow = true));
     this.scene.add(obj);
     this.colliders.push({ type: 'circle', x, z, r: 0.85, bottom: -1, topAt: () => 3 });
