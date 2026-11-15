@@ -98,6 +98,16 @@
   #ark-prompt b { color: var(--accent); border: 1px solid var(--accent); border-radius: 5px; padding: 0 6px; }
   .ark-label { position: absolute; transform: translate(-50%, -100%); font-size: 13px; color: #f4ead8; text-shadow: 0 1px 4px #000, 0 0 2px #000; white-space: nowrap; transition: opacity .2s; }
   .ark-label.person { font-weight: 700; color: #ffe2b0; }
+  #net-labels { position: fixed; inset: 0; pointer-events: none; z-index: 3; }
+  .net-label { position: absolute; transform: translate(-50%, -100%); padding: 3px 9px; border-radius: 999px; background: rgba(6, 16, 22, .7); border: 1px solid var(--line); color: #eafffb; font-size: 13px; font-weight: 700; white-space: nowrap; }
+  .lobby-row { display: flex; gap: 10px; align-items: center; margin: 10px 0; flex-wrap: wrap; color: var(--muted); }
+  .lobby-row input { flex: 1 1 140px; font: inherit; padding: 10px 12px; border-radius: 10px; background: rgba(255,255,255,.06); color: var(--ink); border: 1px solid var(--line); }
+  #coop-code { text-transform: uppercase; letter-spacing: .2em; max-width: 140px; }
+  .lobby-err { color: #ff9a8a !important; min-height: 1.2em; }
+  .lobby-code b { font-size: 34px; letter-spacing: .25em; color: var(--accent); margin-left: 8px; }
+  .lobby-players { list-style: none; padding: 0; margin: 12px 0 0; display: grid; gap: 8px; }
+  .lobby-players li { display: flex; gap: 10px; align-items: center; }
+  .lobby-players i { width: 12px; height: 12px; border-radius: 50%; display: inline-block; }
   /* подсказка по оружию: у левого края, меню при этом сдвигаются вправо */
   #arms-hint { position: fixed; left: max(14px, env(safe-area-inset-left, 0px)); top: 50%; transform: translateY(-50%); width: 250px; z-index: 20; font-size: 13px; pointer-events: none; }
   #arms-hint ul { list-style: none; margin: 8px 0; padding: 0; display: grid; gap: 6px; }
@@ -212,6 +222,7 @@
   <button id="skip">Пропустить <kbd>Space</kbd></button>
 </div>
 
+<div id="net-labels"></div>
 <div id="arkhud" class="hidden">
   <div class="panel" id="ark-top"><div class="label" id="ark-title">Ковчег</div><div id="ark-stats"></div></div>
   <div id="ark-labels"></div>
@@ -254,9 +265,10 @@
     <div class="menu-btns">
       <button id="continue" class="hidden">ПРОДОЛЖИТЬ</button>
       <button id="start">НАЧАТЬ ПЕРВЫЙ ДЕНЬ</button>
+      <button id="coop-btn" class="secondary">ИГРАТЬ ВМЕСТЕ</button>
       <button id="prologue-btn" class="secondary">СМОТРЕТЬ ЗАСТАВКУ</button>
     </div>
-    <p class="desktop-note">Версия 1.4 · для компьютера с клавиатурой и мышью.</p>
+    <p class="desktop-note">Версия 1.9 · для компьютера с клавиатурой и мышью.</p>
   </div>
 </div>
 

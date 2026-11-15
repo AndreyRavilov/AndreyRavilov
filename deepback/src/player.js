@@ -39,6 +39,7 @@ export class Player {
     const iron = new THREE.MeshStandardMaterial({ color: 0x4a4e52, roughness: 0.5, metalness: 0.8 });
     const lampMat = new THREE.MeshStandardMaterial({ color: 0xfff2c8, emissive: 0xffd080, emissiveIntensity: 2, side: THREE.DoubleSide });
     suit.color.set(0xc9772c);
+    this.suitMat = suit; // в совместной игре у каждого ныряльщика свой цвет костюма
     suit.roughness = 0.92;
     const add = (geo, mat, x, y, z, parent = g) => {
       const m = new THREE.Mesh(geo, mat);

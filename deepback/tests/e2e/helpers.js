@@ -9,10 +9,13 @@ export async function setup() {
   const server = await serve(0);
   const url = `http://127.0.0.1:${server.address().port}/index.html`;
   const launch = () => chromium.launch({
-    args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--autoplay-policy=no-user-gesture-required'],
+    args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--autoplay-policy=no-user-gesture-required',
+      // совместная игра в тестах — две вкладки одного браузера; фоновая не должна засыпать
+      '--disable-background-timer-throttling', '--disable-renderer-backgrounding', '--disable-backgrounding-occluded-windows'],
   });
   const env = {
     url,
+    launch, // отдельный браузер — для второго игрока в совместной игре
     browser: await launch(),
     opened: 0,
     // программный рендер копит память: каждые 8 игр браузер перезапускается
@@ -57,7 +60,7 @@ export async function startNewRun(page) {
   await waitFor(page, () => window.__deepback.S.mode === 'day');
 }
 
-export function waitFor(page, fn, arg, timeout = 45000) {
+export function waitFor(page, fn, arg, timeout = 90000) {
   return page.waitForFunction(fn, arg, { timeout, polling: 50 });
 }
 

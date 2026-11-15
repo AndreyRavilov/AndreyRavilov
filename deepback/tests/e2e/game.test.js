@@ -578,3 +578,76 @@ test('оружейная Брана: острога, солевые бомбы �
   assert.ok(await game(page, () => window.__deepback.city.leeches.filter((l) => !l.dead).some((l) => l.cool > 10)));
   assert.deepEqual(page.errors, []);
 });
+
+test('совместная игра: двое в одной комнате видят друг друга, делят запасы и вместе переживают ночь', async (t) => {
+  // два игрока — два отдельных браузера (два программных WebGL в одном не помещаются в память);
+  // связь между ними — комнаты локального сервера игры
+  const browsers = [await env.fresh(true), await env.launch()];
+  t.after(() => browsers[1].close().catch(() => {}));
+  const open = async (b) => {
+    const page = await (await b.newContext({ viewport: { width: 640, height: 360 } })).newPage();
+    page.setDefaultNavigationTimeout(180000);
+    page.setDefaultTimeout(90000);
+    page.errors = [];
+    page.on('pageerror', (e) => page.errors.push(e.message));
+    await page.goto(`${env.url}?quality=low`);
+    await page.waitForFunction(() => window.__deepback && document.querySelector('canvas'));
+    return page;
+  };
+  const A = await open(browsers[0]);
+  const B = await open(browsers[1]);
+  const slow = 120000;
+
+  // Аня создаёт комнату, Боря входит по коду
+  await A.click('#coop-btn');
+  await A.fill('#coop-name', 'Аня');
+  await A.click('#coop-create');
+  const code = (await A.textContent('.lobby-code b')).trim();
+  assert.match(code, /^[A-Z0-9]{4}$/);
+  await B.click('#coop-btn');
+  await B.fill('#coop-name', 'Боря');
+  await B.fill('#coop-code', code.toLowerCase());
+  await B.click('#coop-join');
+  await waitFor(A, () => document.querySelectorAll('.lobby-players li').length === 2, undefined, slow);
+  assert.match(await A.textContent('.lobby-players'), /Боря/);
+
+  // начали: у обоих один и тот же город
+  await clickModalButton(A, 'Начать');
+  await waitFor(A, () => window.__deepback.S.mode === 'day', undefined, slow);
+  await waitFor(B, () => window.__deepback.S.mode === 'day', undefined, slow);
+  const seeds = await Promise.all([A, B].map((p) => game(p, () => [window.__deepback.S.runSeed, window.__deepback.S.cycle, window.__deepback.city.pickups.length])));
+  assert.deepEqual(seeds[0], seeds[1]);
+  // Аня видит ныряльщика Бори с подписью
+  await waitFor(A, () => [...document.querySelectorAll('.net-label')].some((el) => /Боря/.test(el.textContent)), undefined, slow);
+
+  // Боря подбирает рыбу — у Ани она исчезает
+  const idx = await game(B, () => { const d = window.__deepback; return d.city.pickups.findIndex((p) => p.active && p.type === 'food'); });
+  await pickUp(B, 'food');
+  await waitFor(A, (i) => !window.__deepback.city.pickups[i].active, idx, slow);
+  // и сдаёт её — запасы Ковчега общие
+  const food0 = await game(A, () => window.__deepback.S.food);
+  await toHatch(B);
+  await B.keyboard.press('KeyE');
+  await waitFor(A, (f) => window.__deepback.S.food === f + 1, food0, slow);
+  await waitFor(B, (f) => window.__deepback.S.food === f + 1, food0, slow);
+
+  // Боря укрылся в Ковчеге, Аня тоже — день кончается у обоих
+  await B.keyboard.press('KeyR');
+  await waitFor(B, () => window.__deepback.S.mode === 'wait', undefined, slow);
+  await waitFor(A, () => window.__deepback.coop.players().some((p) => p.presence.s === 'wait'), undefined, slow);
+  await toHatch(A);
+  await A.keyboard.press('KeyR');
+  await waitFor(A, () => window.__deepback.S.mode === 'night', undefined, slow);
+  await waitFor(B, () => window.__deepback.S.mode === 'night', undefined, slow);
+  assert.match(await B.textContent('#modal-body'), /успел в Ковчег/);
+
+  // ночь: Боря ложится, Аня ложится — у обоих наступает второй день
+  await clickModalButton(B, 'Войти в Ковчег');
+  await waitFor(B, () => window.__deepback.S.mode === 'ark', undefined, slow);
+  await goToStation(B, 'bed');
+  await sleepThroughNight(A);
+  await waitFor(B, () => window.__deepback.S.mode === 'day' && window.__deepback.S.cycle === 2, undefined, slow);
+  assert.equal(await game(A, () => window.__deepback.S.cycle), 2);
+  assert.deepEqual(A.errors, []);
+  assert.deepEqual(B.errors, []);
+});

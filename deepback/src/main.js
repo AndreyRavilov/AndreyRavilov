@@ -20,6 +20,7 @@ import { Ambient } from './ambient.js';
 import { ArkInterior, ARK_R } from './ark.js';
 import * as ARMS from './armory.js';
 import { NIGHT_ROLES, nightLine } from './residents.js';
+import { createCoop, RemoteDiver } from './coop.js';
 
 // ============ Рендер и сцена ============
 const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: false, powerPreference: 'high-performance' });
@@ -531,6 +532,8 @@ function startDay() {
   deeplings.forEach((d, i) => d.setActive(i < nDeep, W0));
   yaw = Math.PI;
   pitch = 0.35;
+  player.mesh.visible = true;
+  coop.newDay();
   S.mode = 'day';
   S.paused = false;
   $('hud').classList.remove('hidden');
@@ -544,20 +547,41 @@ function startDay() {
   lockPointer();
 }
 
-function deposit() {
-  if (!player.carried.length) {
-    toast('Нечего сдавать. Иди за припасами!');
-    return;
-  }
+// Груз в запасы Ковчега; возвращает номера принесённых реликвий
+function countDeposit(items) {
   const relics = [];
-  for (const t of player.carried) {
+  for (const t of items) {
     if (t === 'food') { S.food++; S.stats.food++; }
     else if (t === 'fuel') { S.fuel++; S.stats.fuel++; }
     else if (t === 'scrap') { S.scrap++; S.stats.scrap++; }
     else if (t === 'keepsake' && S.quest?.kind === 'keepsake') S.quest.have = 1;
     if (S.quest?.kind === 'fetch' && S.quest.item === t) S.quest.have++;
-    else if (t === 'relic') { relics.push(S.lore); S.lore++; S.stats.relics.push(S.lore - 1); }
+    else if (t === 'relic' && S.lore < LORE.length) { relics.push(S.lore); S.lore++; S.stats.relics.push(S.lore - 1); }
   }
+  return relics;
+}
+
+// хост: груз, сданный другим ныряльщиком
+function applyDeposit(items, who) {
+  const relics = countDeposit(items);
+  toast(`${who} сдал груз в Ковчег.`, 'ok');
+  for (const i of relics) toast(`${who} принёс реликвию: «${LORE[i].title}». Она в журнале (J).`, 'relic');
+  checkQuest();
+}
+
+function deposit() {
+  if (!player.carried.length) {
+    toast('Нечего сдавать. Иди за припасами!');
+    return;
+  }
+  let relics;
+  if (coop.isGuest) {
+    // запасы общие и живут у хоста: отправляем ему, реликвию читаем сразу
+    const n = player.carried.filter((t) => t === 'relic').length;
+    relics = [];
+    for (let k = 0; k < n && S.lore + k < LORE.length; k++) relics.push(S.lore + k);
+    coop.act({ k: 'dep', it: player.carried.slice() });
+  } else relics = countDeposit(player.carried);
   player.carried = [];
   player.refreshPack();
   audio.deposit();
@@ -611,6 +635,17 @@ function killResidents(n) {
 
 function endDay(outcome) {
   if (S.mode === 'night') return;
+  if (coop.isGuest) {
+    // ночь считает хост; гость ждёт его сводку в Ковчеге
+    if (outcome === 'drowned') {
+      player.carried = [];
+      player.refreshPack();
+      toast('Тебя вытащили к шлюзу без сознания. Груз унесло течением.', 'danger');
+      coopWait(true);
+    } else coopWait();
+    return;
+  }
+  coop.newDay();
   if (outcome === 'safe' && player.carried.length) deposit();
   S.mode = 'night';
   S.paused = false;
@@ -645,6 +680,7 @@ function endDay(outcome) {
   lines.push(NIGHT_LINES[(S.cycle - 1) % NIGHT_LINES.length]);
   lines.push(`Осталось жителей: ${S.pop}. Запасы: 🐟 ${S.food} · 🛢️ ${S.fuel}. Реликвий: ${S.lore}/${LORE.length}.`);
 
+  if (coop.isHost) coop.hostNight(lines, S.pop <= 0 || S.lore >= LORE.length);
   setTimeout(() => {
     if (S.pop <= 0) {
       showModal({
@@ -714,7 +750,14 @@ function workshopItems() {
       price: cost,
       disabled: cost === null || S.scrap < cost,
       reason: cost === null ? 'Максимум' : null,
-      onBuy: () => { S.scrap -= cost; S.up[up.key] = lvl + 1; applyUpgrades(); },
+      onBuy: () => {
+        S.scrap -= cost;
+        S.up = { ...S.up, [up.key]: lvl + 1 };
+        applyUpgrades();
+        // в совместной игре улучшения Ковчега общие: хост запишет их для всех
+        coop.act({ k: 'spend', n: cost, up: up.key, lv: lvl + 1 });
+        coop.holdSpend();
+      },
     };
   });
 }
@@ -732,7 +775,13 @@ function armoryItems() {
       reason: why === 'Уже есть.' || (why && why.startsWith('Больше')) ? why : null,
       onBuy: () => {
         const r = ARMS.buy(S.arms, S.scrap, w.key);
-        if (r.ok) { S.arms = r.arms; S.scrap = r.scrap; showArmsHint(); }
+        if (r.ok) {
+          coop.act({ k: 'spend', n: S.scrap - r.scrap });
+          coop.holdSpend();
+          S.arms = r.arms;
+          S.scrap = r.scrap;
+          showArmsHint();
+        }
       },
     };
   });
@@ -785,6 +834,11 @@ const world = {
   groundAt: (x, z, y) => city.groundAt(x, z, y),
 };
 
+function takePickup(pk) {
+  pk.active = false;
+  pk.mesh.visible = false;
+}
+
 function nearestPickup() {
   let best = null;
   let bd = 2.8;
@@ -831,8 +885,8 @@ function updateGame(dt) {
     if (near) {
       const it = ITEM[near.type];
       if (player.weight + it.weight <= player.capacity) {
-        near.active = false;
-        near.mesh.visible = false;
+        takePickup(near);
+        coop.act({ k: 'pick', i: city.pickups.indexOf(near) });
         player.carried.push(near.type);
         player.refreshPack();
         audio.pickup(near.type);
@@ -840,7 +894,10 @@ function updateGame(dt) {
       } else toast('Слишком тяжело. Сначала сдай груз в Ковчег.', 'warn');
     } else if (hatch) deposit();
   }
-  if (pressed.has('KeyR') && hatch) endDay('safe');
+  if (pressed.has('KeyR') && hatch) {
+    if (coop.active && coop.players().length > 1) coopWait();
+    else endDay('safe');
+  }
 
   // анимация припасов
   for (const pk of city.pickups) {
@@ -1564,6 +1621,12 @@ function openStation(st) {
       wide: true,
       buttons: [{ label: 'Отойти', onClick: resumeArk }],
     });
+  } else if (st.kind === 'chronicle' && coop.isGuest) {
+    showModal({ title: 'Летопись', body: 'Летопись этой комнаты ведёт хост: он записывает день за всех.', buttons: [{ label: 'Отойти', onClick: resumeArk }] });
+  } else if (st.kind === 'bed' && coop.isGuest) {
+    S.paused = false;
+    coop.sleep();
+    arkToast('Ты лёг в гамак. Утро начнётся, когда хост ляжет спать.');
   } else if (st.kind === 'chronicle') {
     const here = S.alive.includes('osk');
     showModal({
@@ -1796,8 +1859,9 @@ function updateFlare(dt) {
   }
 }
 
-function killLeech(L) {
+function killLeech(L, remote = false) {
   if (L.dead) return;
+  if (!remote) coop.act({ k: 'kill', i: city.leeches.indexOf(L) });
   L.dead = true;
   city.group.remove(L.mesh);
   for (let i = 0; i < 14; i++) ambient.spray.spawn(L.x, L.mesh.position.y + 0.3, L.z, (Math.random() - 0.5) * 3, 1 + Math.random() * 2, (Math.random() - 0.5) * 3, 0.8, 0.3);
@@ -2061,8 +2125,128 @@ if (saved && saved.pop > 0) {
 }
 
 
+// ============ Совместная игра ============
+const netLabels = new Map();
+const netLabelV = new THREE.Vector3();
+function toMenu() {
+  $('modal').classList.add('hidden');
+  if (S.mode === 'ark') {
+    scene.add(player.mesh);
+    post.setScene(scene);
+    $('arkhud').classList.add('hidden');
+  }
+  $('hud').classList.add('hidden');
+  S.mode = 'menu';
+  S.paused = false;
+  $('menu').classList.remove('hidden');
+}
+// R у шлюза в совместной игре: груз сдан, ждём остальных внутри
+function coopWait(drowned = false) {
+  if (!drowned && player.carried.length) deposit();
+  coop.wait(drowned);
+  S.mode = 'wait';
+  navDots.count = 0;
+  document.exitPointerLock?.();
+  const left = coop.players().filter((p) => !(p.isMe && p.sameTab) && p.presence.s !== 'wait').length;
+  toast(left ? `Ты в Ковчеге. Ждём остальных: ещё ${left}. День закончится, когда войдут все или прозвучит последний гудок.` : 'Ты в Ковчеге.', 'ok');
+}
+const coop = createCoop({
+  S,
+  get city() { return city; },
+  player,
+  showModal,
+  toMenu,
+  savedName: () => { try { return localStorage.getItem('deepback-name'); } catch { return null; } },
+  saveName: (n) => { try { localStorage.setItem('deepback-name', n); } catch { /* приватное окно */ } },
+  startCoopRun: () => {
+    leaveMenu();
+    startRun(false);
+  },
+  endDay: (o) => endDay(o),
+  takePickup,
+  applyDeposit,
+  killLeech,
+  applyUpgrades,
+  hidePlayer: () => { player.mesh.visible = false; },
+  hostLeft: () => {
+    showModal({ title: 'Хост вышел', body: 'Хозяин комнаты закрыл игру, и город ушёл под воду без него. Можно создать свою комнату или сыграть одному.', buttons: [{ label: 'В меню', onClick: toMenu }] });
+  },
+  // гость: тот же город и тот же день, что у хоста
+  guestStartDay: (w) => {
+    $('modal').classList.add('hidden');
+    if (!$('menu').classList.contains('hidden')) leaveMenu();
+    if (S.mode === 'ark') {
+      scene.add(player.mesh);
+      post.setScene(scene);
+      $('arkhud').classList.add('hidden');
+      $('ark-labels').innerHTML = '';
+    }
+    S.runSeed = w.seed;
+    S.cycle = w.cyc;
+    S.food = w.f;
+    S.fuel = w.u;
+    S.scrap = w.sc;
+    S.pop = w.pop;
+    S.lore = w.lo;
+    S.up = { ...(w.up || {}) };
+    S.alive = Array.isArray(w.al) ? w.al.slice() : RESIDENTS.map((r) => r.id);
+    S.arms = S.arms && typeof S.arms === 'object' ? S.arms : ARMS.emptyArms();
+    startDay();
+    S.t = w.t;
+    toast(`Ты в комнате ${coop.code.toUpperCase()}. Общий Ковчег, общие запасы.`, 'ok');
+  },
+  // гость: сводка ночи — та, что посчитал хост
+  guestNight: (lines, { over, drowned, waited }) => {
+    S.mode = 'night';
+    S.paused = false;
+    navDots.count = 0;
+    document.exitPointerLock?.();
+    $('hud').classList.add('hidden');
+    const mine = drowned ? 'Тебя вытащили к шлюзу без сознания — груз унесло.' : waited ? 'Ты успел в Ковчег до погружения.' : 'Ты не успел к шлюзу: тебя втащили в последний момент, весь груз унесло.';
+    const final = over || S.lore >= LORE.length;
+    showModal({
+      title: over && S.pop <= 0 ? 'Седьмой город пал' : `Ночь ${S.cycle}`,
+      body: [mine, ...lines].join('\n\n') + (final ? '\n\nДальше решает хост комнаты.' : ''),
+      buttons: final
+        ? [{ label: 'Выйти в меню', onClick: () => { coop.leave(); toMenu(); } }]
+        : [{ label: 'Войти в Ковчег', onClick: enterArk }],
+    });
+  },
+  makeRemote: () => new RemoteDiver(Player, { day: scene, ark: ark.scene }),
+  label: (peer, pos, name, carried, where) => {
+    let el = netLabels.get(peer);
+    if (!pos) {
+      if (el && name === undefined) { el.remove(); netLabels.delete(peer); }
+      else if (el) el.style.display = 'none';
+      return;
+    }
+    if (!el) {
+      el = document.createElement('div');
+      el.className = 'net-label';
+      $('net-labels').appendChild(el);
+      netLabels.set(peer, el);
+    }
+    netLabelV.copy(pos).project(camera);
+    if (netLabelV.z > 1) { el.style.display = 'none'; return; }
+    el.style.display = '';
+    el.style.left = `${(netLabelV.x * 0.5 + 0.5) * innerWidth}px`;
+    el.style.top = `${(-netLabelV.y * 0.5 + 0.5) * innerHeight}px`;
+    const text = `${name}${carried ? ` · груз ${carried}` : ''}${where === 'sleep' ? ' · спит' : ''}`;
+    if (el.textContent !== text) el.textContent = text;
+  },
+  clearLabels: () => {
+    for (const el of netLabels.values()) el.remove();
+    netLabels.clear();
+  },
+});
+$('coop-btn').addEventListener('click', () => {
+  audio.init();
+  audio.resume();
+  coop.openLobby();
+});
+
 // для фона меню и для автотестов
-window.__deepback = { showArmsHint, planShot: (s) => planShot(s), cameraRoomy: (c, r) => cameraRoomy(c, r), ark, enterArk, killLeech, lineClear: (...a) => lineClear(...a), introPoint: (s) => introPoint(s), S, sky, envScene, whale, ambient, scene, post, voice, intro, startIntro, endIntro, player, city, ocean, deeplings, rain, navDots, startRun, startDay, endDay, keys, pressed, setYaw: (v) => (yaw = v) };
+window.__deepback = { coop, showArmsHint, planShot: (s) => planShot(s), cameraRoomy: (c, r) => cameraRoomy(c, r), ark, enterArk, killLeech, lineClear: (...a) => lineClear(...a), introPoint: (s) => introPoint(s), S, sky, envScene, whale, ambient, scene, post, voice, intro, startIntro, endIntro, player, city, ocean, deeplings, rain, navDots, startRun, startDay, endDay, keys, pressed, setYaw: (v) => (yaw = v) };
 
 // ============ Цикл ============
 const clock = new THREE.Clock();
@@ -2092,7 +2276,15 @@ function frame() {
     updateArk(dt);
   } else if (S.mode === 'night') {
     ocean.update(S.time, W1 + 6, player.pos.x, player.pos.z);
+  } else if (S.mode === 'wait') {
+    // в Ковчеге, пока остальные ещё снаружи: смотрим на город над шлюзом
+    const pw = Math.min(1, S.t / S.T);
+    ocean.update(S.time, ECO.waterLevel(pw, S.weather), player.pos.x, player.pos.z);
+    applyTime(pw);
+    updateCamera(dt);
+    updateHud();
   }
+  coop.tick(dt);
   if (whale.userData.fluke) whale.userData.fluke.rotation.x = Math.sin(S.time * 0.4) * 0.08;
   if (S.debugCam) {
     camera.position.fromArray(S.debugCam[0]);
