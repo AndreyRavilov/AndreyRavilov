@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { mergeGeometries } from '../vendor/addons/utils/BufferGeometryUtils.js';
-import { buildWhale, dressWhale, backHeight, backU, BLOWHOLE, WHALE } from './whale.js';
+import { buildWhale, dressWhale, backHeight, backU, BLOWHOLE, WHALE, KELP_TIME } from './whale.js';
 import { Ocean } from './ocean.js';
 import { City, HATCH, SPAWN, ITEM, MATERIALS, dressMaterials } from './city.js';
 import { Player, CAPACITY } from './player.js';
@@ -2430,6 +2430,7 @@ function frame() {
   }
   coop.tick(dt);
   // Мать живая: хвост медленно поднимается из воды, плавники гребут
+  KELP_TIME.value = S.time;
   if (whale.userData.fluke) {
     const slow = Math.sin(S.time * 0.12);
     whale.userData.fluke.rotation.x = -0.12 - Math.max(0, slow) * 0.42 + Math.sin(S.time * 0.5) * 0.05;

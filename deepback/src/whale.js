@@ -38,6 +38,9 @@ function n3(x, y, z) {
   );
 }
 
+// время для колыхания водорослей (обновляет main.js)
+export const KELP_TIME = { value: 0 };
+
 export function buildWhale() {
   const g = new THREE.Group();
 
@@ -287,6 +290,54 @@ export function buildWhale() {
   moss.receiveShadow = true;
   moss.castShadow = true;
   g.add(puddles, moss);
+
+  // --- Водоросли: ленты, свисающие с боков под водой, колышутся течением ---
+  const kelpGeo = new THREE.PlaneGeometry(0.9, 1, 1, 8);
+  kelpGeo.translate(0, -0.5, 0); // крепится верхним краем
+  {
+    // лист сужается к концу и чуть волнист по краю
+    const ps = kelpGeo.attributes.position;
+    for (let k = 0; k < ps.count; k++) {
+      const along = -ps.getY(k);
+      ps.setX(k, ps.getX(k) * (1 - along * 0.75) * (1 + 0.12 * Math.sin(along * 14)));
+    }
+  }
+  const kelpMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.8, side: THREE.DoubleSide, emissive: 0x0d1a08, emissiveIntensity: 1 });
+  kelpMat.onBeforeCompile = (shader) => {
+    shader.uniforms.uKelpTime = KELP_TIME;
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nuniform float uKelpTime;')
+      .replace('#include <begin_vertex>', `#include <begin_vertex>
+        float along = -position.y; // 0 у основания, 1 на конце
+        float ph = instanceMatrix[3].x * 0.7 + instanceMatrix[3].z * 0.4;
+        transformed.x += sin(uKelpTime * 1.3 + ph + along * 3.0) * 0.35 * along;
+        transformed.z += cos(uKelpTime * 0.9 + ph + along * 2.0) * 0.25 * along;`);
+  };
+  const kelpN = 900;
+  const kelp = new THREE.InstancedMesh(kelpGeo, kelpMat, kelpN);
+  const kelpColor = new THREE.Color();
+  let ki = 0;
+  while (ki < kelpN) {
+    const th = rnd() * Math.PI * 2;
+    // пояс чуть ниже края спины — там, где бок уходит в воду
+    const v = new THREE.Vector3(Math.sin(th), 0, Math.cos(th));
+    const zn = v.z;
+    const ax = WHALE.a * taper(zn);
+    const x = v.x * ax * (0.98 + rnd() * 0.04);
+    const z = zn * WHALE.b * (0.98 + rnd() * 0.04);
+    const y = -0.2 - rnd() * 1.6; // крепятся у «экватора» и свисают вниз
+    const len = 2.5 + rnd() * 4.5;
+    sc.set(0.7 + rnd() * 0.8, len, 1);
+    q.setFromAxisAngle(up, Math.atan2(x, z) + (rnd() - 0.5) * 0.9); // лист обращён наружу
+    p.set(x, y, z);
+    m.compose(p, q, sc);
+    kelp.setMatrixAt(ki, m);
+    const t2 = rnd();
+    kelpColor.setRGB(0.22 + t2 * 0.15, 0.32 + t2 * 0.15, 0.1 + t2 * 0.05, THREE.SRGBColorSpace);
+    kelp.setColorAt(ki, kelpColor);
+    ki++;
+  }
+  g.add(kelp);
 
   return g;
 }
