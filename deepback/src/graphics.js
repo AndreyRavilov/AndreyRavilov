@@ -6,6 +6,7 @@ import { UnrealBloomPass } from '../vendor/addons/postprocessing/UnrealBloomPass
 import { ShaderPass } from '../vendor/addons/postprocessing/ShaderPass.js';
 import { OutputPass } from '../vendor/addons/postprocessing/OutputPass.js';
 import { SMAAPass } from '../vendor/addons/postprocessing/SMAAPass.js';
+import { GTAOPass } from '../vendor/addons/postprocessing/GTAOPass.js';
 
 // ---------- Небо ----------
 export function createSkyMaterial(cloudTex) {
@@ -137,7 +138,7 @@ const GodRaysShader = {
 export const QUALITY = {
   low: { composer: false, smaa: false, bloom: false, shadows: false, shadowSize: 512, pixelRatio: 1 },
   medium: { composer: true, smaa: false, bloom: true, shadows: true, shadowSize: 1024, pixelRatio: 1.5 },
-  high: { composer: true, smaa: true, bloom: true, shadows: true, shadowSize: 2048, pixelRatio: 2 },
+  high: { composer: true, smaa: true, bloom: true, shadows: true, shadowSize: 2048, pixelRatio: 2, ao: true },
 };
 
 export class Post {
@@ -173,6 +174,16 @@ export class Post {
       const h = window.innerHeight;
       const c = new EffectComposer(r);
       c.addPass(new RenderPass(this.scene, this.camera));
+      // затенение в углах и щелях: стыки домов с землёй, складки кожи, проулки
+      this.ao = null;
+      if (q.ao) {
+        this.ao = new GTAOPass(this.scene, this.camera, w, h);
+        this.ao.output = GTAOPass.OUTPUT.Default;
+        this.ao.blendIntensity = 0.85;
+        this.ao.updateGtaoMaterial({ radius: 1.4, distanceExponent: 1.5, thickness: 2.5, scale: 1.1, samples: 12, distanceFallOff: 1, screenSpaceRadius: false });
+        this.ao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 6, rings: 2, samples: 12 });
+        c.addPass(this.ao);
+      }
       if (q.bloom) {
         this.bloom = new UnrealBloomPass(new THREE.Vector2(w, h), 0.55, 0.55, 0.86);
         c.addPass(this.bloom);
@@ -192,6 +203,7 @@ export class Post {
   setScene(scene) {
     this.scene = scene;
     if (this.composer) this.composer.passes[0].scene = scene;
+    if (this.ao) this.ao.scene = scene;
   }
 
   resize() {
