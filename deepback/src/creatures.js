@@ -6,7 +6,33 @@ import { WHALE, backHeight } from './whale.js';
 const N = 12;
 const SPACING = 1.0;
 
-const bodyMat = new THREE.MeshStandardMaterial({ color: 0x0d1418, roughness: 0.4, metalness: 0.3, emissive: 0x061a1a, emissiveIntensity: 0.6 });
+const bodyMat = new THREE.MeshPhysicalMaterial({ color: 0x0d1418, roughness: 0.6, metalness: 0.05, clearcoat: 0.35, clearcoatRoughness: 0.35, emissive: 0x061a1a, emissiveIntensity: 0.6 });
+const finMat = new THREE.MeshStandardMaterial({ color: 0x1c3a3c, roughness: 0.6, transparent: true, opacity: 0.55, side: THREE.DoubleSide, emissive: 0x0a3a34, emissiveIntensity: 0.5, depthWrite: false });
+const toothMat = new THREE.MeshStandardMaterial({ color: 0xd8e6dc, roughness: 0.25, emissive: 0x13261e, emissiveIntensity: 0.5 });
+const throatMat = new THREE.MeshBasicMaterial({ color: 0x3a0710 });
+
+// Перепончатый плавник: треугольник с изогнутой кромкой и «лучами»
+function finGeo(len, h) {
+  const shape = new THREE.Shape();
+  shape.moveTo(0, 0);
+  shape.quadraticCurveTo(len * 0.35, h * 1.1, len, h * 0.25);
+  shape.lineTo(len * 0.85, 0);
+  shape.lineTo(0, 0);
+  return new THREE.ShapeGeometry(shape, 8);
+}
+// Ряд зубов-игл вдоль челюсти
+function teethRow(w, n, len, down) {
+  const parts = [];
+  for (let i = 0; i < n; i++) {
+    const t = i / (n - 1);
+    const a = (t - 0.5) * Math.PI * 0.9;
+    const cone = new THREE.ConeGeometry(0.035, len * (0.6 + 0.4 * Math.cos(a)), 5);
+    if (down) cone.rotateX(Math.PI);
+    cone.translate(Math.sin(a) * w, 0, -Math.cos(a) * w * 0.9);
+    parts.push(cone);
+  }
+  return parts;
+}
 const spotMat = new THREE.MeshBasicMaterial({ color: 0x5dffc8 });
 const eyeMat = new THREE.MeshBasicMaterial({ color: 0xfff27a });
 const lureMat = new THREE.MeshBasicMaterial({ color: 0xb6ffe0 });
@@ -33,9 +59,51 @@ export class Deepling {
       this.segPos.push(new THREE.Vector3());
     }
     const head = this.segs[0];
+    // пасть удильщика: нижняя челюсть на шарнире, иглы зубов сверху и снизу, тёмная глотка
+    const throat = new THREE.Mesh(new THREE.SphereGeometry(0.55, 12, 8), throatMat);
+    throat.position.set(0, -0.15, -0.95);
+    throat.scale.set(1, 0.5, 0.8);
+    head.add(throat);
+    const upper = new THREE.Group();
+    for (const g of teethRow(0.62, 11, 0.32, true)) upper.add(new THREE.Mesh(g, toothMat));
+    upper.position.set(0, -0.08, -0.62);
+    head.add(upper);
+    this.jaw = new THREE.Group();
+    this.jaw.position.set(0, -0.32, -0.15);
+    const jawBone = new THREE.Mesh(new THREE.SphereGeometry(0.75, 14, 8, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2), bodyMat);
+    jawBone.scale.set(0.95, 0.45, 1.15);
+    jawBone.position.z = -0.72;
+    this.jaw.add(jawBone);
+    const lower = new THREE.Group();
+    for (const g of teethRow(0.6, 10, 0.36, false)) lower.add(new THREE.Mesh(g, toothMat));
+    lower.position.set(0, 0.02, -0.92);
+    this.jaw.add(lower);
+    head.add(this.jaw);
+    // грудные плавники
+    for (const s of [-1, 1]) {
+      const fin = new THREE.Mesh(finGeo(1.1, 0.5), finMat);
+      fin.position.set(s * 0.8, -0.1, 0.1);
+      fin.rotation.set(0, s > 0 ? -0.4 : Math.PI + 0.4, -0.35 * s);
+      head.add(fin);
+    }
+    // спинной гребень по всему телу и хвостовой плавник
+    for (let i = 2; i < N - 1; i += 2) {
+      const r = 0.95 * (1 - i / N) + 0.2;
+      const crest = new THREE.Mesh(finGeo(0.9, 0.45 * r + 0.2), finMat);
+      crest.rotation.y = Math.PI / 2;
+      crest.position.set(0, r * 0.75, 0.4);
+      this.segs[i].add(crest);
+    }
+    const tail = new THREE.Mesh(finGeo(1.2, 0.9), finMat);
+    tail.rotation.y = -Math.PI / 2;
+    tail.position.set(0, 0, 0.1);
+    this.segs[N - 1].add(tail);
+    const tail2 = tail.clone();
+    tail2.scale.y = -1;
+    this.segs[N - 1].add(tail2);
     for (const s of [-0.4, 0.4]) {
       const eye = new THREE.Mesh(new THREE.SphereGeometry(0.14, 8, 8), eyeMat);
-      eye.position.set(s, 0.35, -0.8);
+      eye.position.set(s * 1.15, 0.42, -0.92);
       head.add(eye);
     }
     // приманка, как у удильщика
@@ -126,6 +194,9 @@ export class Deepling {
       m.rotateY(Math.PI);
     }
     this.light.intensity = this.hunting ? 30 + Math.sin(this.phase * 4) * 10 : 14;
+    // пасть приоткрыта всегда, на охоте — распахнута
+    const open = this.hunting ? 0.55 + Math.sin(this.phase * 2.5) * 0.15 : 0.12 + Math.sin(this.phase * 0.7) * 0.06;
+    this.jaw.rotation.x += (open - this.jaw.rotation.x) * Math.min(1, dt * 4);
 
     if (dP < 1.8 && this.cool <= 0 && player.swimming) {
       this.cool = 3;

@@ -32,7 +32,10 @@ const M = {
   barrel: new THREE.MeshStandardMaterial({ color: 0xb4532a, roughness: 0.7, metalness: 0.2 }),
   relic: new THREE.MeshStandardMaterial({ color: 0xffe9a8, emissive: 0x5ff0ff, emissiveIntensity: 1.6, roughness: 0.2, metalness: 0.8 }),
   glow: new THREE.MeshBasicMaterial({ color: 0xfff1b0, transparent: true, opacity: 0.35, depthWrite: false }),
-  leech: new THREE.MeshStandardMaterial({ color: 0x2b1631, roughness: 0.35, metalness: 0.2, emissive: 0x3a0d2a, emissiveIntensity: 0.4 }),
+  // пиявка: влажная, под слоем слизи (лак поверх), с кольцами и полосами по спине
+  leech: new THREE.MeshPhysicalMaterial({ vertexColors: true, roughness: 0.5, clearcoat: 1, clearcoatRoughness: 0.12, emissive: 0x2a0820, emissiveIntensity: 0.35 }),
+  leechMouth: new THREE.MeshStandardMaterial({ color: 0xb8505e, roughness: 0.4 }),
+  leechTeeth: new THREE.MeshStandardMaterial({ color: 0xe8dcc0, roughness: 0.3 }),
   leechEye: new THREE.MeshBasicMaterial({ color: 0xff5a7a }),
 };
 M.trim = new THREE.MeshStandardMaterial({ color: 0x2c2620, roughness: 0.85 });
@@ -683,15 +686,22 @@ export class City {
     const g = new THREE.Group();
     const segs = [];
     for (let i = 0; i < 4; i++) {
-      const s = new THREE.Mesh(new THREE.SphereGeometry(0.55 - i * 0.08, 12, 10), M.leech);
+      const s = new THREE.Mesh(LEECH_SEGS[i], M.leech);
       s.scale.set(1, 0.7, 1.2);
       s.position.z = i * 0.7;
       g.add(s);
       segs.push(s);
     }
+    // присоска-рот впереди: розовое кольцо и венчик зубцов
+    const mouth = new THREE.Mesh(LEECH_MOUTH, M.leechMouth);
+    mouth.position.set(0, -0.02, -0.62);
+    g.add(mouth);
+    const teeth = new THREE.Mesh(LEECH_TEETH, M.leechTeeth);
+    teeth.position.copy(mouth.position);
+    g.add(teeth);
     for (const sx of [-0.22, 0.22]) {
-      const e = new THREE.Mesh(new THREE.SphereGeometry(0.08, 6, 6), M.leechEye);
-      e.position.set(sx, 0.25, -0.4);
+      const e = new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 6), M.leechEye);
+      e.position.set(sx, 0.26, -0.42);
       g.add(e);
     }
     shadow(g);
@@ -702,6 +712,47 @@ export class City {
     this.leeches.push({ mesh: g, segs, x, z, dir: rng() * Math.PI * 2, cool: 0, phase: rng() * 6, push: null });
   }
 }
+
+// Сегмент пиявки: кольчатое тело, тёмная спина с двумя рыжими полосами, светлее брюхо
+function leechSegment(r) {
+  const geo = new THREE.SphereGeometry(r, 20, 14);
+  const ps = geo.attributes.position;
+  const col = new Float32Array(ps.count * 3);
+  const c = new THREE.Color();
+  for (let i = 0; i < ps.count; i++) {
+    const x = ps.getX(i);
+    const y = ps.getY(i);
+    const z = ps.getZ(i);
+    const ring = 1 + 0.07 * Math.pow(Math.abs(Math.sin((z / r) * 7)), 3);
+    ps.setXYZ(i, x * ring, y * ring, z);
+    const side = Math.abs(x / r);
+    const stripe = y > 0 && Math.abs(side - 0.42) < 0.09 ? 1 : 0;
+    const belly = y < -r * 0.2 ? 1 : 0;
+    c.setRGB(0.12, 0.05, 0.11, THREE.SRGBColorSpace);
+    if (stripe) c.setRGB(0.62, 0.32, 0.12, THREE.SRGBColorSpace);
+    else if (belly) c.setRGB(0.3, 0.2, 0.22, THREE.SRGBColorSpace);
+    else if (Math.sin(x * 31) * Math.sin(z * 27) > 0.85) c.setRGB(0.05, 0.02, 0.05, THREE.SRGBColorSpace);
+    col[i * 3] = c.r;
+    col[i * 3 + 1] = c.g;
+    col[i * 3 + 2] = c.b;
+  }
+  geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  geo.computeVertexNormals();
+  return geo;
+}
+const LEECH_SEGS = [0, 1, 2, 3].map((i) => leechSegment(0.55 - i * 0.08));
+const LEECH_MOUTH = new THREE.TorusGeometry(0.2, 0.07, 8, 18);
+const LEECH_TEETH = (() => {
+  const parts = [];
+  for (let i = 0; i < 10; i++) {
+    const a = (i / 10) * Math.PI * 2;
+    const t = new THREE.ConeGeometry(0.03, 0.1, 5);
+    t.rotateX(Math.PI / 2);
+    t.translate(Math.cos(a) * 0.15, Math.sin(a) * 0.15, -0.02);
+    parts.push(t);
+  }
+  return mergeGeometries(parts);
+})();
 
 // Ребро Матери: дуга из позвонков — утолщения через равные промежутки,
 // у земли кость толще, к вершине тоньше; чуть неровная, как настоящая
