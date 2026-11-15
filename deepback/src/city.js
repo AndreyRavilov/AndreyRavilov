@@ -660,18 +660,38 @@ export class City {
     const y = backHeight(x, z);
     const g = new THREE.Group();
     g.position.set(x, y, z);
-    const mast = new THREE.Mesh(boxProjectUV(new THREE.BoxGeometry(0.8, 14, 0.8), 2), M.rust);
-    mast.position.y = 7;
-    g.add(mast);
-    const boom = new THREE.Mesh(boxProjectUV(new THREE.BoxGeometry(0.5, 0.5, 16), 2), M.rust);
-    boom.position.set(0, 13.5, 6);
-    g.add(boom);
-    const cable = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 6), M.rope);
-    cable.position.set(0, 10.5, 13.5);
+    // решётчатая мачта и стрела из ржавых уголков, противовес, будка, блок с крюком
+    g.add(new THREE.Mesh(CRANE.truss, M.rust));
+    const cab = new THREE.Mesh(boxProjectUV(new THREE.BoxGeometry(1.6, 1.5, 1.6), 1.2), wallMats[1]);
+    cab.position.set(0, 12.6, -0.4);
+    g.add(cab);
+    const cabRoof = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.12, 1.8), M.steel);
+    cabRoof.position.set(0, 13.4, -0.4);
+    g.add(cabRoof);
+    const win = new THREE.Mesh(new THREE.PlaneGeometry(1.0, 0.6), M.window);
+    win.position.set(0, 12.8, 0.41);
+    g.add(win);
+    const weight = new THREE.Mesh(boxProjectUV(new THREE.BoxGeometry(1.4, 1.2, 1.6), 1.2), M.steel);
+    weight.position.set(0, 13.0, -4.6);
+    g.add(weight);
+    const cable = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 5.6, 5), M.rope);
+    cable.position.set(0, 11.0, 13.5);
     g.add(cable);
-    const cage = new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.6, 1.6), M.steel);
-    cage.position.set(0, 7, 13.5);
+    const pulley = new THREE.Mesh(new THREE.TorusGeometry(0.3, 0.08, 6, 14), M.steel);
+    pulley.rotation.y = Math.PI / 2;
+    pulley.position.set(0, 13.6, 13.5);
+    g.add(pulley);
+    const hook = new THREE.Mesh(new THREE.TorusGeometry(0.22, 0.06, 6, 12, Math.PI * 1.4), M.steel);
+    hook.position.set(0, 8.0, 13.5);
+    hook.rotation.z = Math.PI * 0.8;
+    g.add(hook);
+    // клеть с сетью
+    const cage = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.4, 1.5), M.net);
+    cage.position.set(0, 7.0, 13.5);
     g.add(cage);
+    const cageFrame = new THREE.Mesh(CRANE.cage, M.steel);
+    cageFrame.position.copy(cage.position);
+    g.add(cageFrame);
     g.rotation.y = Math.atan2(x, z);
     shadow(g);
     this.group.add(g);
@@ -798,6 +818,57 @@ export class City {
     this.leeches.push({ mesh: g, segs, x, z, dir: rng() * Math.PI * 2, cool: 0, phase: rng() * 6, push: null });
   }
 }
+
+// Кран: брусья-уголки между точками, мачта-ферма 1×1 м, стрела-ферма до 16 м
+const CRANE = (() => {
+  const beam = (a, b, t = 0.09) => {
+    const dir = new THREE.Vector3().subVectors(b, a);
+    const len = dir.length();
+    const g2 = new THREE.BoxGeometry(t, len, t);
+    g2.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.normalize()));
+    g2.translate((a.x + b.x) / 2, (a.y + b.y) / 2, (a.z + b.z) / 2);
+    return g2.toNonIndexed();
+  };
+  const V = (x, y, z) => new THREE.Vector3(x, y, z);
+  const parts = [];
+  const h = 0.5;
+  // мачта: четыре стойки и раскосы через каждые 2 м
+  for (const [cx, cz] of [[-h, -h], [h, -h], [h, h], [-h, h]]) parts.push(beam(V(cx, 0, cz), V(cx, 14, cz), 0.14));
+  for (let y = 0; y < 14; y += 2) {
+    const corners = [[-h, -h], [h, -h], [h, h], [-h, h]];
+    for (let k = 0; k < 4; k++) {
+      const [ax, az] = corners[k];
+      const [bx, bz] = corners[(k + 1) % 4];
+      parts.push(beam(V(ax, y, az), V(bx, y, bz)));
+      parts.push(beam(V(ax, y, az), V(bx, y + 2, bz)));
+    }
+  }
+  // стрела: треугольная ферма от мачты до 14 м вперёд и хвост назад
+  const top = 13.9;
+  const bw = 0.35;
+  for (const sx of [-bw, bw]) parts.push(beam(V(sx, top, -5.2), V(sx, top, 14), 0.12));
+  parts.push(beam(V(0, top + 0.6, -5.2), V(0, top + 0.6, 14), 0.1));
+  for (let z = -5; z < 14; z += 1.5) {
+    parts.push(beam(V(-bw, top, z), V(bw, top, z)));
+    parts.push(beam(V(-bw, top, z), V(0, top + 0.6, z + 0.75)));
+    parts.push(beam(V(bw, top, z), V(0, top + 0.6, z + 0.75)));
+  }
+  // растяжки от верхушки мачты к концам стрелы
+  parts.push(beam(V(0, 16, 0), V(0, top + 0.6, 13.5), 0.05));
+  parts.push(beam(V(0, 16, 0), V(0, top + 0.6, -5), 0.05));
+  parts.push(beam(V(-h, 14, -h), V(0, 16, 0), 0.1), beam(V(h, 14, h), V(0, 16, 0), 0.1));
+  const truss = mergeGeometries(parts);
+  // каркас клети
+  const cp = [];
+  const c = 0.75;
+  const cy = 0.7;
+  for (const [ax, az] of [[-c, -c], [c, -c], [c, c], [-c, c]]) cp.push(beam(V(ax, -cy, az), V(ax, cy, az), 0.06));
+  for (const yy of [-cy, cy]) {
+    cp.push(beam(V(-c, yy, -c), V(c, yy, -c), 0.06), beam(V(c, yy, -c), V(c, yy, c), 0.06));
+    cp.push(beam(V(c, yy, c), V(-c, yy, c), 0.06), beam(V(-c, yy, c), V(-c, yy, -c), 0.06));
+  }
+  return { truss, cage: mergeGeometries(cp) };
+})();
 
 // Кронштейн фонаря: от столба выгибается дугой и спускается к фонарю, с завитком
 const LAMP_ARM = (() => {
