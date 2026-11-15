@@ -37,7 +37,7 @@ export class Player {
 
     const leather = new THREE.MeshStandardMaterial({ color: 0x3a2a1e, roughness: 0.7 });
     const iron = new THREE.MeshStandardMaterial({ color: 0x4a4e52, roughness: 0.5, metalness: 0.8 });
-    const lampMat = new THREE.MeshStandardMaterial({ color: 0xfff2c8, emissive: 0xffd080, emissiveIntensity: 2 });
+    const lampMat = new THREE.MeshStandardMaterial({ color: 0xfff2c8, emissive: 0xffd080, emissiveIntensity: 2, side: THREE.DoubleSide });
     suit.color.set(0xc9772c);
     suit.roughness = 0.92;
     const add = (geo, mat, x, y, z, parent = g) => {
@@ -53,10 +53,11 @@ export class Player {
     add(new THREE.TorusGeometry(0.36, 0.05, 8, 20), leather, 0, 0.78, 0).rotation.x = Math.PI / 2;
     add(new THREE.BoxGeometry(0.12, 0.09, 0.05), brass, 0, 0.78, -0.35);
     // нагрудник-манишка, на нём держится шлем
-    const corselet = add(new THREE.CylinderGeometry(0.3, 0.42, 0.22, 16), brass, 0, 1.36, 0);
+    // шире торса, чтобы ткань костюма не проступала сквозь латунь
+    const corselet = add(new THREE.CylinderGeometry(0.36, 0.47, 0.32, 20), brass, 0, 1.37, 0);
     for (let i = 0; i < 8; i++) {
       const a = (i / 8) * Math.PI * 2;
-      add(new THREE.SphereGeometry(0.025, 6, 4), iron, Math.sin(a) * 0.36, 1.3, Math.cos(a) * 0.36);
+      add(new THREE.SphereGeometry(0.025, 6, 4), iron, Math.sin(a) * 0.43, 1.3, Math.cos(a) * 0.43);
     }
     void corselet;
 
@@ -80,10 +81,12 @@ export class Player {
     port(-0.31, -0.06, Math.PI / 2 - 0.15, 0.09);
     port(0.31, -0.06, -Math.PI / 2 + 0.15, 0.09);
     add(new THREE.CylinderGeometry(0.06, 0.08, 0.1, 10), brass, 0, 0.36, 0, head);
-    add(new THREE.CylinderGeometry(0.035, 0.035, 0.16, 8), brass, 0.12, 0.28, 0.2, head).rotation.x = 0.6;
-    // лампа над стеклом
-    add(new THREE.CylinderGeometry(0.06, 0.07, 0.12, 10), iron, 0, 0.27, -0.2, head).rotation.x = Math.PI / 2 - 0.4;
-    add(new THREE.CircleGeometry(0.05, 12), lampMat, 0, 0.29, -0.27, head).rotation.x = -0.4;
+    // лампа над стеклом — утоплена в шлем, ничего не торчит
+    const lampRing = add(new THREE.TorusGeometry(0.05, 0.015, 6, 16), brass, 0, 0.19, -0.285, head);
+    lampRing.rotation.x = -0.6;
+    const lens = add(new THREE.CircleGeometry(0.05, 14), lampMat, 0, 0.19, -0.286, head);
+    lens.rotation.x = -0.6;
+    lens.rotation.y = Math.PI;
 
     // руки
     this.arms = [];

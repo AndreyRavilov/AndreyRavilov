@@ -473,6 +473,24 @@ test('ролик: показывает, что собирать и куда не
     assert.ok(views.length >= 2);
     for (const [k, clear] of views) assert.ok(clear, `ракурс ${k}: цель закрыта постройкой`);
   }
+  // дыхало и ночной Ковчег: весь пролёт камеры не задевает дома и арки (регрессия: дом закрывал кадр)
+  const flights = await page.evaluate(async () => {
+    const d = window.__deepback;
+    const CUT = await import('./src/cutscene.js');
+    const res = [];
+    for (const id of ['breath', 'night']) {
+      const s = CUT.SHOTS.find((x) => x.id === id);
+      d.planShot(s);
+      for (let i = 0; i <= 10; i++) {
+        const k = CUT.ease(i / 10);
+        const c = CUT.lerp3(d.introPoint(s.cam[0]), d.introPoint(s.cam[1]), k);
+        const l = CUT.lerp3(d.introPoint(s.look[0]), d.introPoint(s.look[1]), k);
+        if (!d.lineClear(c, l) || !d.cameraRoomy(c, 1.2)) res.push(`${id}@${i / 10}`);
+      }
+    }
+    return res;
+  });
+  assert.deepEqual(flights, [], 'камера ролика упирается в постройку');
   assert.deepEqual(page.errors, []);
 });
 

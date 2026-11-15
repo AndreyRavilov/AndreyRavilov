@@ -1187,13 +1187,21 @@ function introRelic() {
 // ---- Камера ролика не упирается в дома ----
 // Видно ли цель из точки a: отрезок не проходит сквозь постройки и спину Матери
 function lineClear(a, b) {
+  // постройка, внутри которой стоит сама цель (Ковчег), — это и есть объект съёмки
+  const own = city.colliders.filter((c) => (c.type === 'box'
+    ? b[0] > c.minX && b[0] < c.maxX && b[2] > c.minZ && b[2] < c.maxZ
+    : Math.hypot(b[0] - c.x, b[2] - c.z) < c.r));
   for (let i = 1; i < 28; i++) {
     const t = i / 28;
     const x = a[0] + (b[0] - a[0]) * t;
     const y = a[1] + (b[1] - a[1]) * t;
     const z = a[2] + (b[2] - a[2]) * t;
     if (t < 0.97 && y < backHeight(x, z) + 0.25) return false;
+    for (const q of city.archPoints) {
+      if (Math.abs(x - q[0]) < 1.2 && Math.abs(y - q[1]) < 1.2 && Math.abs(z - q[2]) < 1.2) return false;
+    }
     for (const c of city.colliders) {
+      if (own.includes(c)) continue;
       if (c.type === 'box') {
         if (x > c.minX - 0.4 && x < c.maxX + 0.4 && z > c.minZ - 0.4 && z < c.maxZ + 0.4 && y < c.top + 0.6) return false;
       } else if (Math.hypot(x - c.x, z - c.z) < c.r + 0.4 && y < c.topAt(x, z) + 0.6) return false;
@@ -1203,6 +1211,9 @@ function lineClear(a, b) {
 }
 // Рядом с камерой не должно быть стен, столбов и верёвок, которые закроют край кадра
 function cameraRoomy(c, r = 2.6) {
+  for (const q of city.archPoints) {
+    if (Math.hypot(c[0] - q[0], c[1] - q[1], c[2] - q[2]) < r + 1.2) return false;
+  }
   for (const k of city.colliders) {
     if (k.type !== 'box') continue;
     const dx = Math.max(k.minX - c[0], 0, c[0] - k.maxX);
@@ -1230,8 +1241,25 @@ const angleOf = (c, t) => Math.atan2(c[0] - t.x, c[2] - t.z);
 // пара точек «издалека → ближе», обе с чистым видом и с одной стороны
 function shotPair(target, far, farH, near, nearH, pref, extra = []) {
   const a = clearShot(target, far, farH, pref, extra);
+  const T = [target.x, target.y, target.z];
+  // пролёт камеры от a к b должен быть чистым: ни стен на пути, ни арок у самого объектива
+  const flightOk = (b) => {
+    for (let i = 1; i <= 6; i++) {
+      const m = CUT.lerp3(a, b, i / 6);
+      if (!lineClear(m, T) || !cameraRoomy(m, 1.2)) return false;
+    }
+    return extra.every((e) => lineClear(b, e));
+  };
   const b = clearShot(target, near, nearH, angleOf(a, target), extra);
-  return [a, b];
+  if (flightOk(b)) return [a, b];
+  // иначе — наезд по уже проверенному лучу a→цель: сколько получится без помех
+  const da = Math.hypot(a[0] - T[0], a[1] - T[1], a[2] - T[2]);
+  const want = Math.max(0, 1 - Math.hypot(near, nearH) / da);
+  for (const f of [want, want * 0.75, want * 0.5, want * 0.25, 0.08]) {
+    const d = [a[0] + (T[0] - a[0]) * f, a[1] + (T[1] - a[1]) * f, a[2] + (T[2] - a[2]) * f];
+    if (flightOk(d)) return [a, d];
+  }
+  return [a, a];
 }
 
 // Витрина для сцены «что собирать»: рыба и бочка на открытом месте рядом со шлюзом
@@ -1243,6 +1271,7 @@ function setupShowcase() {
       const z = HATCH.z + Math.cos(a) * r;
       if (backU(x, z) > 0.55 || city.overlaps(x, z, 4.5)) continue;
       if (city.pickups.some((p) => Math.hypot(p.x - x, p.z - z) < 4)) continue;
+      if (city.archPoints.some((q) => Math.hypot(q[0] - x, q[2] - z) < 8)) continue; // арка заслонит кадр
       const before = city.pickups.length;
       city.addPickup('food', x - 1.4, z);
       city.addPickup('fuel', x + 1.4, z);
@@ -1276,6 +1305,17 @@ function planShot(shot) {
     if (Math.abs(Math.sin(angleOf(near, t))) > 0.6) [far, near] = shotPair(t, 10, 5, 5.2, 1.3, Math.PI, items);
     cams['show-far'] = far;
     cams['show-near'] = near;
+  } else if (shot.id === 'breath') {
+    const t = { x: BLOWHOLE.x, y: BLOWHOLE.y + 3, z: BLOWHOLE.z };
+    const [far, near] = shotPair(t, 28, 11, 21, 8, 0.55);
+    cams['breath-far'] = far;
+    cams['breath-near'] = near;
+  } else if (shot.id === 'night') {
+    // Ковчег и глубинник, проплывающий перед ним
+    const t = { x: 0, y: 17.5, z: 0 };
+    const [far, near] = shotPair(t, 34, 4, 24, 3, 0.75, [[0, 21, 16]]);
+    cams['night-far'] = far;
+    cams['night-near'] = near;
   } else if (shot.id === 'hatch') {
     const t = { x: HATCH.x, y: HATCH.y + 1.2, z: HATCH.z };
     const [far, near] = shotPair(t, 18, 8, 7.5, 2.4, 0.25);
@@ -1437,14 +1477,16 @@ const arkWorld = {
   wind: null,
 };
 let arkPlayerCamPitch = 0.3;
+let arkCamY = null;
 
 function enterArk() {
+  arkCamY = null;
   S.mode = 'ark';
   S.paused = false;
   S.savedToday = false;
   ark.setup(S.alive, S.pop);
   ark.scene.add(player.mesh);
-  player.reset(new THREE.Vector3(0, 0, 5.6));
+  player.reset(new THREE.Vector3(0, 0, ARK_R * 0.7));
   player.facing = 0;
   player.mesh.rotation.set(0, 0, 0);
   yaw = 0;
@@ -1562,25 +1604,42 @@ function updateArk(dt) {
   if (pressed.has('KeyJ')) showJournal();
 
   // камера: внутри зала, под куполом
-  const dist = 4.2;
-  camTarget.set(player.pos.x, player.pos.y + 1.6, player.pos.z);
-  let cx = camTarget.x + Math.sin(yaw) * Math.cos(pitch) * dist;
-  let cz = camTarget.z + Math.cos(yaw) * Math.cos(pitch) * dist;
-  const cy = Math.min(6.2, Math.max(0.6, camTarget.y + Math.sin(pitch) * dist));
+  // дальше и выше, чем на улице: видно и ныряльщика, и тех, с кем он говорит
+  const dist = 6.2;
+  const pit = Math.max(pitch, 0.32);
+  camTarget.set(player.pos.x, player.pos.y + 1.5, player.pos.z);
+  let cx = camTarget.x + Math.sin(yaw) * Math.cos(pit) * dist;
+  let cz = camTarget.z + Math.cos(yaw) * Math.cos(pit) * dist;
+  let cy = Math.min(6.4, Math.max(0.6, camTarget.y + Math.sin(pit) * dist));
   const cr = Math.hypot(cx, cz);
-  if (cr > ARK_R - 0.4) { cx *= (ARK_R - 0.4) / cr; cz *= (ARK_R - 0.4) / cr; }
-  // если между ныряльщиком и камерой печь, житель или мебель — камера подъезжает ближе
-  let k = 1;
-  for (let i = 1; i <= 24; i++) {
-    const t = i / 24;
-    const x = camTarget.x + (cx - camTarget.x) * t;
-    const z = camTarget.z + (cz - camTarget.z) * t;
-    const y = camTarget.y + (cy - camTarget.y) * t;
-    if (ark.colliders.some((c) => Math.hypot(x - c.x, z - c.z) < c.r + 0.35 && y < c.topAt(x, z) + 0.4)) {
-      k = Math.max(0.15, (i - 1) / 24);
-      break;
-    }
+  // у стены камера не прижимается к спине, а поднимается и смотрит сверху
+  if (cr > ARK_R - 0.5) {
+    const lost = cr - (ARK_R - 0.5);
+    cx *= (ARK_R - 0.5) / cr;
+    cz *= (ARK_R - 0.5) / cr;
+    cy = Math.min(6.4, cy + lost * 0.9);
   }
+  // если между ныряльщиком и камерой печь, житель или мебель — камера подъезжает ближе
+  // сначала камера пробует подняться над помехой, и лишь потом подъезжает ближе
+  const freeK = (hy) => {
+    for (let i = 1; i <= 24; i++) {
+      const t = i / 24;
+      const x = camTarget.x + (cx - camTarget.x) * t;
+      const z = camTarget.z + (cz - camTarget.z) * t;
+      const y = camTarget.y + (hy - camTarget.y) * t;
+      if (ark.colliders.some((c) => Math.hypot(x - c.x, z - c.z) < c.r + 0.35 && y < c.topAt(x, z) + 0.4)) return Math.max(0.3, (i - 1) / 24);
+    }
+    return 1;
+  };
+  let k = 1;
+  for (const hy of [cy, cy + 1.5, 6.4]) {
+    k = freeK(Math.min(6.4, hy));
+    if (k === 1) { cy = Math.min(6.4, hy); break; }
+  }
+  if (k < 1) cy = 6.4; // k посчитан для самой высокой точки
+  // плавно, без рывков при переходе между высотами
+  arkCamY = arkCamY == null ? cy : arkCamY + (cy - arkCamY) * Math.min(1, dt * 4);
+  cy = arkCamY;
   camera.position.set(camTarget.x + (cx - camTarget.x) * k, camTarget.y + (cy - camTarget.y) * k, camTarget.z + (cz - camTarget.z) * k);
   camera.lookAt(camTarget);
 
@@ -1993,7 +2052,7 @@ if (saved && saved.pop > 0) {
 
 
 // для фона меню и для автотестов
-window.__deepback = { showArmsHint, ark, enterArk, killLeech, lineClear: (...a) => lineClear(...a), introPoint: (s) => introPoint(s), S, sky, envScene, whale, ambient, scene, post, voice, intro, startIntro, endIntro, player, city, ocean, deeplings, rain, navDots, startRun, startDay, endDay, keys, pressed, setYaw: (v) => (yaw = v) };
+window.__deepback = { showArmsHint, planShot: (s) => planShot(s), cameraRoomy: (c, r) => cameraRoomy(c, r), ark, enterArk, killLeech, lineClear: (...a) => lineClear(...a), introPoint: (s) => introPoint(s), S, sky, envScene, whale, ambient, scene, post, voice, intro, startIntro, endIntro, player, city, ocean, deeplings, rain, navDots, startRun, startDay, endDay, keys, pressed, setYaw: (v) => (yaw = v) };
 
 // ============ Цикл ============
 const clock = new THREE.Clock();

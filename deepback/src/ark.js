@@ -3,21 +3,22 @@
 import * as THREE from 'three';
 import { RESIDENTS, NIGHT_ROLES } from './residents.js';
 
-export const ARK_R = 8; // радиус зала
-export const DOOR = new THREE.Vector3(0, 0, 6.6);
+export const ARK_R = 11; // радиус зала: просторно, чтобы камера не упиралась в ныряльщика
+const K = ARK_R / 8; // всё, что расставлено по кругу, растёт вместе с залом
+export const DOOR = new THREE.Vector3(0, 0, 6.6 * K);
 
 // Где кто стоит: угол (0 — у двери, +z) и расстояние от центра
 const PLACES = {
-  tagir: { a: 1.25, r: 5.6 },
-  bran: { a: -1.25, r: 5.6 },
-  osk: { a: Math.PI, r: 5.4 },
-  agata: { a: 0.35, r: 2.2 },
-  mira: { a: -2.2, r: 5.2 },
-  lina: { a: 2.25, r: 5.0 },
-  yos: { a: 0.75, r: 3.6 },
-  vey: { a: -0.7, r: 3.7 },
+  tagir: { a: 1.25, r: 5.6 * K },
+  bran: { a: -1.25, r: 5.6 * K },
+  osk: { a: Math.PI, r: 5.4 * K },
+  agata: { a: 0.35, r: 2.2 * K },
+  mira: { a: -2.2, r: 5.2 * K },
+  lina: { a: 2.25, r: 5.0 * K },
+  yos: { a: 0.75, r: 3.6 * K },
+  vey: { a: -0.7, r: 3.7 * K },
 };
-const BED = { a: 2.75, r: 6.4 };
+const BED = { a: 2.75, r: 6.4 * K };
 
 // Внешность жителей: одежда, кожа, волосы, головной убор
 const LOOKS = {
@@ -116,7 +117,7 @@ export class ArkInterior {
   constructor(TEX) {
     const scene = (this.scene = new THREE.Scene());
     scene.background = new THREE.Color(0x07090b);
-    scene.fog = new THREE.Fog(0x0b0d10, 10, 30);
+    scene.fog = new THREE.Fog(0x0b0d10, 14, 40);
     this.colliders = [];
     this.stations = [];
     this.time = 0;
@@ -128,16 +129,16 @@ export class ArkInterior {
     this.stoveLight.castShadow = true;
     scene.add(this.stoveLight);
     this.lamps = [];
-    for (const [x, z] of [[4, 2.5], [-4, 2.5], [0, -4.6]]) {
-      const l = new THREE.PointLight(0xffc070, 14, 11, 1.7);
-      l.position.set(x, 4.2, z);
+    for (const [x, z] of [[4 * K, 2.5 * K], [-4 * K, 2.5 * K], [0, -4.6 * K], [0, 6 * K]]) {
+      const l = new THREE.PointLight(0xffc070, 16, 14, 1.6);
+      l.position.set(x, 4.6, z);
       scene.add(l);
       this.lamps.push(l);
       const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.16, 10, 8), new THREE.MeshStandardMaterial({ color: 0xffe2a8, emissive: 0xffb860, emissiveIntensity: 3 }));
       bulb.position.copy(l.position);
       scene.add(bulb);
       const chain = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 3.2, 4), std(0x222222));
-      chain.position.set(x, 5.9, z);
+      chain.position.set(x, 6.3, z);
       scene.add(chain);
     }
 
@@ -170,7 +171,7 @@ export class ArkInterior {
     floor.rotation.x = -Math.PI / 2;
     floor.receiveShadow = true;
     scene.add(floor);
-    const wall = new THREE.Mesh(new THREE.CylinderGeometry(ARK_R + 0.2, ARK_R + 0.2, 7, 48, 1, true), wallMat);
+    const wall = new THREE.Mesh(new THREE.CylinderGeometry(ARK_R + 0.2, ARK_R + 0.2, 7, 64, 1, true), wallMat);
     wall.position.y = 3.5;
     wall.receiveShadow = true;
     scene.add(wall);
@@ -189,11 +190,13 @@ export class ArkInterior {
     scene.add(rail);
     const dome = new THREE.Mesh(new THREE.SphereGeometry(ARK_R + 0.2, 40, 16, 0, Math.PI * 2, 0, Math.PI / 2), domeMat);
     dome.position.y = 7;
+    dome.scale.y = 0.62; // приплюснутый купол: зал шире, но не колодец
     scene.add(dome);
     // рёбра купола
     for (let i = 0; i < 12; i++) {
       const rib = new THREE.Mesh(new THREE.TorusGeometry(ARK_R, 0.09, 6, 32, Math.PI / 2), std(0x2a2a2a, { metalness: 0.6 }));
       rib.position.y = 7;
+      rib.scale.set(0.62, 1, 1); // локальная ось x после поворота смотрит вверх
       rib.rotation.set(0, (i / 12) * Math.PI * 2, Math.PI / 2);
       scene.add(rib);
     }
@@ -339,7 +342,7 @@ export class ArkInterior {
       rugMat.map.colorSpace = THREE.SRGBColorSpace;
       rugMat.color.set(0xffffff);
     }
-    const rug = new THREE.Mesh(new THREE.CircleGeometry(3.2, 40), rugMat);
+    const rug = new THREE.Mesh(new THREE.CircleGeometry(3.6, 40), rugMat);
     rug.rotation.x = -Math.PI / 2;
     rug.position.y = 0.012;
     rug.receiveShadow = true;
@@ -347,7 +350,7 @@ export class ArkInterior {
 
     // полки с банками у стены
     {
-      const [x, z] = at(1.8, 7.3);
+      const [x, z] = at(1.8, ARK_R - 0.7);
       const shelf = new THREE.Group();
       shelf.position.set(x, 0, z);
       shelf.lookAt(0, 0, 0);
@@ -373,7 +376,7 @@ export class ArkInterior {
 
     // бочки и мешки
     for (const [ang, n] of [[-1.8, 4], [0.62, 2], [-0.62, 3]]) {
-      const [x, z] = at(ang, 7.0);
+      const [x, z] = at(ang, ARK_R - 1.0);
       for (let i = 0; i < n; i++) {
         const b = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 0.95, 12), std(0x7a4a2a));
         const off = (i - (n - 1) / 2) * 0.85;
@@ -388,7 +391,7 @@ export class ArkInterior {
       block(x, z, 0.4 + n * 0.42);
     }
     for (let i = 0; i < 3; i++) {
-      const [x, z] = at(-2.75 + i * 0.12, 7.1);
+      const [x, z] = at(-2.75 + i * 0.12, ARK_R - 0.9);
       const sack = new THREE.Mesh(new THREE.SphereGeometry(0.42, 10, 8), std(0xb8a07a, { roughness: 1 }));
       sack.scale.set(1, 1.25, 0.85);
       sack.position.set(x, 0.48, z);
@@ -481,10 +484,10 @@ export class ArkInterior {
     let placed = 0;
     for (let i = 0; i < 16 && placed < sleepers; i++) {
       const a = (i / 16) * Math.PI * 2 + 0.2;
-      const near = [...Object.values(PLACES), BED].some((p) => Math.abs(Math.atan2(Math.sin(a - p.a), Math.cos(a - p.a))) < 0.45 && p.r > 4.5);
+      const near = [...Object.values(PLACES), BED].some((p) => Math.abs(Math.atan2(Math.sin(a - p.a), Math.cos(a - p.a))) < 0.45 && p.r > 4.5 * K);
       if (near || Math.abs(Math.sin(a / 2)) < 0.25) continue;
       const h = hammock(this.hammockMat, colors[placed % colors.length]);
-      h.position.set(Math.sin(a) * 7.1, 0, Math.cos(a) * 7.1);
+      h.position.set(Math.sin(a) * (ARK_R - 0.9), 0, Math.cos(a) * (ARK_R - 0.9));
       h.lookAt(0, 0, 0);
       h.rotateY(Math.PI / 2);
       this.people.add(h);

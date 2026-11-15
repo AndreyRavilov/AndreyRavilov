@@ -119,6 +119,7 @@ export class City {
     this.group = new THREE.Group();
     scene.add(this.group);
     this.colliders = [];
+    this.archPoints = [];
     this.staticColliders = [];
     this.pickups = [];
     this.leeches = [];
@@ -224,6 +225,7 @@ export class City {
     this.group = new THREE.Group();
     this.scene.add(this.group);
     this.colliders = [...this.staticColliders];
+    this.archPoints = [];
     this.pickups = [];
     this.leeches = [];
     this.chimneys = [];
@@ -547,6 +549,13 @@ export class City {
     g.rotation.y = rng() * Math.PI;
     shadow(g);
     this.group.add(g);
+    // точки вдоль дуги — для камеры ролика (сама арка не мешает ходить)
+    const r = g.rotation.y;
+    for (let k = 0; k <= 10; k++) {
+      const th = (k / 10) * Math.PI;
+      const lx = Math.cos(th) * R;
+      this.archPoints.push([x + lx * Math.cos(r), y - 0.5 + Math.sin(th) * R, z - lx * Math.sin(r)]);
+    }
   }
 
   addLamp(x, z) {
