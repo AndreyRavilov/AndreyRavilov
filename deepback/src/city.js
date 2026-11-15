@@ -621,16 +621,42 @@ export class City {
   addPickup(type, x, z, relicIndex = -1, y = null) {
     const g = new THREE.Group();
     if (type === 'food') {
-      const body = new THREE.Mesh(new THREE.SphereGeometry(0.5, 12, 8), M.fish);
-      body.scale.set(0.45, 0.6, 1.2);
-      g.add(body);
-      const tail = new THREE.Mesh(new THREE.ConeGeometry(0.35, 0.6, 4), M.fish);
-      tail.rotation.x = Math.PI / 2;
-      tail.position.z = 0.75;
+      g.add(new THREE.Mesh(FISH.body, FISH.mat));
+      const tail = new THREE.Mesh(FISH.tail, FISH.finMat);
+      tail.position.z = 0.62;
       g.add(tail);
+      const dorsal = new THREE.Mesh(FISH.fin, FISH.finMat);
+      dorsal.rotation.y = Math.PI / 2;
+      dorsal.position.set(0, 0.2, 0.12);
+      g.add(dorsal);
+      for (const s of [-1, 1]) {
+        const eye = new THREE.Mesh(FISH.eye, FISH.eyeMat);
+        eye.position.set(s * 0.1, 0.06, -0.42);
+        g.add(eye);
+      }
     } else if (type === 'keepsake') {
-      const box = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.4, 0.4), new THREE.MeshStandardMaterial({ color: 0xffb3d1, emissive: 0xff5fa2, emissiveIntensity: 1.2 }));
+      // сундучок жителя: дерево, медные уголки, светящаяся лента
+      const box = new THREE.Mesh(boxProjectUV(new THREE.BoxGeometry(0.6, 0.38, 0.42), 0.6), M.deck);
       g.add(box);
+      const lid = new THREE.Mesh(new THREE.CylinderGeometry(0.21, 0.21, 0.6, 12, 1, false, 0, Math.PI), M.deck);
+      lid.rotation.z = Math.PI / 2;
+      lid.position.y = 0.19;
+      g.add(lid);
+      const ribbonMat = new THREE.MeshStandardMaterial({ color: 0xffb3d1, emissive: 0xff5fa2, emissiveIntensity: 1.4 });
+      const ribbon = new THREE.Mesh(new THREE.TorusGeometry(0.25, 0.03, 6, 20), ribbonMat);
+      ribbon.scale.set(1, 1.15, 0.9);
+      ribbon.position.y = 0.05;
+      g.add(ribbon);
+      const bow = new THREE.Mesh(new THREE.TorusKnotGeometry(0.06, 0.02, 24, 4), ribbonMat);
+      bow.position.y = 0.43;
+      g.add(bow);
+      for (const cx of [-0.29, 0.29]) {
+        for (const cz of [-0.2, 0.2]) {
+          const corner = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.4, 0.05), M.trim);
+          corner.position.set(cx, 0, cz);
+          g.add(corner);
+        }
+      }
       const light = new THREE.PointLight(0xff7fb8, 14, 12, 1.8);
       g.add(light);
     } else if (type === 'scrap') {
@@ -712,6 +738,56 @@ export class City {
     this.leeches.push({ mesh: g, segs, x, z, dir: rng() * Math.PI * 2, cool: 0, phase: rng() * 6, push: null });
   }
 }
+
+// Рыба: тело вращением профиля, тёмная спина и серебристое брюхо,
+// полоса вдоль бока; раздвоенный хвост и спинной плавник
+const FISH = (() => {
+  const pts = [];
+  for (let i = 0; i <= 16; i++) {
+    const t = i / 16;
+    const r = Math.sin(Math.PI * Math.pow(t, 0.75)) * 0.22 * (1 - 0.35 * t);
+    pts.push(new THREE.Vector2(Math.max(0.005, r), (t - 0.5) * 1.05));
+  }
+  const body = new THREE.LatheGeometry(pts, 18);
+  body.rotateX(Math.PI / 2); // толстая часть (голова) — в сторону -z
+  body.scale(0.7, 1, 1); // сплюснута с боков
+  const ps = body.attributes.position;
+  const col = new Float32Array(ps.count * 3);
+  const c = new THREE.Color();
+  for (let i = 0; i < ps.count; i++) {
+    const y = ps.getY(i);
+    const z = ps.getZ(i);
+    const k = Math.max(0, Math.min(1, (y + 0.15) / 0.3));
+    c.setRGB(0.78 - k * 0.6, 0.82 - k * 0.55, 0.86 - k * 0.42, THREE.SRGBColorSpace);
+    if (Math.abs(y - 0.02) < 0.02) c.setRGB(0.45, 0.62, 0.7, THREE.SRGBColorSpace);
+    if (y > 0.05 && Math.sin(z * 40) > 0.6) c.multiplyScalar(0.8);
+    col[i * 3] = c.r;
+    col[i * 3 + 1] = c.g;
+    col[i * 3 + 2] = c.b;
+  }
+  body.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  body.computeVertexNormals();
+  const tailShape = new THREE.Shape();
+  tailShape.moveTo(0, 0);
+  tailShape.lineTo(0.32, 0.26);
+  tailShape.quadraticCurveTo(0.2, 0, 0.32, -0.26);
+  tailShape.lineTo(0, 0);
+  const tail = new THREE.ShapeGeometry(tailShape, 6);
+  tail.rotateY(-Math.PI / 2);
+  const finShape = new THREE.Shape();
+  finShape.moveTo(-0.15, 0);
+  finShape.quadraticCurveTo(0, 0.18, 0.2, 0.02);
+  finShape.lineTo(-0.15, 0);
+  return {
+    body,
+    tail,
+    fin: new THREE.ShapeGeometry(finShape, 6),
+    eye: new THREE.SphereGeometry(0.035, 8, 6),
+    mat: new THREE.MeshPhysicalMaterial({ vertexColors: true, roughness: 0.3, metalness: 0.4, clearcoat: 1, clearcoatRoughness: 0.15 }),
+    finMat: new THREE.MeshStandardMaterial({ color: 0x5a7f8f, roughness: 0.5, side: THREE.DoubleSide, transparent: true, opacity: 0.85 }),
+    eyeMat: new THREE.MeshStandardMaterial({ color: 0x0a0a0a, roughness: 0.1, metalness: 0.3 }),
+  };
+})();
 
 // Сегмент пиявки: кольчатое тело, тёмная спина с двумя рыжими полосами, светлее брюхо
 function leechSegment(r) {
