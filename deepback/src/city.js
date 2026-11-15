@@ -42,6 +42,9 @@ M.trim = new THREE.MeshStandardMaterial({ color: 0x2c2620, roughness: 0.85 });
 M.deck = new THREE.MeshStandardMaterial({ color: 0x7a5c40, roughness: 0.9 });
 M.pool = new THREE.MeshBasicMaterial({ color: 0xff9a40, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, polygonOffset: true, polygonOffsetFactor: -3 });
 M.ao = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.45, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 });
+M.dryFish = new THREE.MeshStandardMaterial({ color: 0x9a7b52, roughness: 0.55, metalness: 0.15 });
+M.float = new THREE.MeshStandardMaterial({ color: 0xd9542e, roughness: 0.6 });
+M.driftwood = new THREE.MeshStandardMaterial({ color: 0x8a7a66, roughness: 0.95 });
 M.brass = new THREE.MeshStandardMaterial({ color: 0xb08a50, metalness: 0.85, roughness: 0.35 });
 M.net = new THREE.MeshStandardMaterial({ color: 0x3a3a30, roughness: 1, transparent: true, alphaTest: 0.3, side: THREE.DoubleSide });
 export const MATERIALS = M;
@@ -620,12 +623,103 @@ export class City {
       }
       g.add(wg);
     }
+    this.dressWalls(g, x, z, hx, hz, h, base);
     shadow(g);
     this.group.add(g);
     this.colliders.push({ type: 'box', minX: x - hx, maxX: x + hx, minZ: z - hz, maxZ: z + hz, bottom: base, top });
     const blob = aoBlob(w * 1.5, d * 1.5);
     blob.position.set(x, backHeight(x, z) + 0.04, z);
     this.group.add(blob);
+  }
+
+  // Жизнь на стенах: вяленая рыба на верёвке, развешанная сеть, лестница, поленница.
+  // Свой генератор от координат дома, чтобы не сдвигать раскладку города.
+  dressWalls(g, x, z, hx, hz, h, base) {
+    const r = mulberry32(Math.floor(x * 1009 + z * 9173) >>> 0);
+    const ground = (lx, lz) => backHeight(x + lx, z + lz) - base;
+    // стены: 0 — левая (-x), 1 — правая (+x), 2 — задняя (-z)
+    const wallAt = (k, t) => (k === 0 ? [-hx - 0.12, t * (hz - 0.8), -Math.PI / 2] : k === 1 ? [hx + 0.12, t * (hz - 0.8), Math.PI / 2] : [t * (hx - 0.8), -hz - 0.12, Math.PI]);
+    const used = new Set();
+    const pick = () => { let k; do { k = Math.floor(r() * 3); } while (used.has(k) && used.size < 3); used.add(k); return k; };
+    if (r() < 0.5) {
+      // вяленая рыба: верёвка между гвоздями и пять-семь рыбин хвостом вверх
+      const [px, pz, ry] = wallAt(pick(), r() * 1.4 - 0.7);
+      const grp = new THREE.Group();
+      grp.position.set(px, Math.min(h - 1.2, ground(px, pz) + 2.6), pz);
+      grp.rotation.y = ry;
+      const rope = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 2.0, 4), M.rope);
+      rope.rotation.z = Math.PI / 2;
+      grp.add(rope);
+      const n = 5 + Math.floor(r() * 3);
+      for (let i = 0; i < n; i++) {
+        const f = new THREE.Mesh(FISH.body, M.dryFish);
+        f.scale.setScalar(0.45 + r() * 0.15);
+        f.rotation.x = -Math.PI / 2 + (r() - 0.5) * 0.3;
+        f.position.set(-0.85 + (i / (n - 1)) * 1.7, -0.3, 0.06);
+        grp.add(f);
+      }
+      g.add(grp);
+    }
+    if (r() < 0.45) {
+      // сеть, перекинутая через жердь
+      const [px, pz, ry] = wallAt(pick(), r() * 1.2 - 0.6);
+      const grp = new THREE.Group();
+      grp.position.set(px, Math.min(h - 1.4, ground(px, pz) + 2.2), pz);
+      grp.rotation.y = ry;
+      const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 2.6, 5), M.trim);
+      pole.rotation.z = Math.PI / 2;
+      pole.position.y = 0.9;
+      grp.add(pole);
+      const net = new THREE.Mesh(new THREE.PlaneGeometry(2.3, 1.8, 6, 4), M.net);
+      const ps = net.geometry.attributes.position;
+      for (let k = 0; k < ps.count; k++) ps.setZ(k, 0.05 + Math.sin((ps.getX(k) / 2.3 + 0.5) * Math.PI * 2) * 0.06 + (0.9 - ps.getY(k)) * 0.04);
+      net.position.set(0, 0, 0.02);
+      grp.add(net);
+      for (let i = 0; i < 4; i++) {
+        const float = new THREE.Mesh(new THREE.SphereGeometry(0.09, 8, 6), M.float);
+        float.position.set(-0.9 + i * 0.6, -0.75 + (i % 2) * 0.12, 0.12);
+        grp.add(float);
+      }
+      g.add(grp);
+    }
+    if (r() < 0.35) {
+      // лестница, прислонённая к стене
+      const [px, pz, ry] = wallAt(pick(), r() * 1.4 - 0.7);
+      const grp = new THREE.Group();
+      const len = Math.min(h - 0.5, 4.2);
+      grp.position.set(px, ground(px, pz), pz);
+      grp.rotation.y = ry;
+      const lean = 0.22;
+      for (const sx of [-0.28, 0.28]) {
+        const side = new THREE.Mesh(new THREE.BoxGeometry(0.08, len, 0.08), M.trim);
+        side.position.set(sx, len / 2, 0.5 - (len / 2) * Math.sin(lean));
+        side.rotation.x = -lean;
+        grp.add(side);
+      }
+      for (let y = 0.4; y < len - 0.2; y += 0.42) {
+        const rung = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.05, 0.06), M.trim);
+        rung.position.set(0, y * Math.cos(lean), 0.5 - y * Math.sin(lean));
+        grp.add(rung);
+      }
+      g.add(grp);
+    }
+    if (r() < 0.4) {
+      // поленница из плавника под стеной
+      const [px, pz, ry] = wallAt(pick(), r() * 1.2 - 0.6);
+      const grp = new THREE.Group();
+      grp.position.set(px, ground(px, pz), pz);
+      grp.rotation.y = ry;
+      for (let row = 0; row < 3; row++) {
+        for (let i = 0; i < 5 - row; i++) {
+          const log = new THREE.Mesh(new THREE.CylinderGeometry(0.12 + r() * 0.04, 0.12, 1.2, 7), M.driftwood);
+          log.rotation.x = Math.PI / 2;
+          log.rotation.z = Math.PI / 2;
+          log.position.set(-0.5 + i * 0.26 + row * 0.13, 0.13 + row * 0.22, 0.35);
+          grp.add(log);
+        }
+      }
+      g.add(grp);
+    }
   }
 
   addArch(rng, x, z) {
