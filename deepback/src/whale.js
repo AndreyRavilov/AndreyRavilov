@@ -137,13 +137,29 @@ export function buildWhale() {
   g.add(rim);
 
   // --- Ракушки-наросты: «вулканчики» гроздьями ---
-  const barnGeo = new THREE.CylinderGeometry(0.16, 0.42, 0.38, 9, 1, true);
+  // конус из шести известковых пластин: рёбра по кругу, рваный верхний край
+  const barnGeo = new THREE.CylinderGeometry(0.17, 0.42, 0.38, 18, 3, true);
+  {
+    const ps = barnGeo.attributes.position;
+    for (let k = 0; k < ps.count; k++) {
+      const x = ps.getX(k);
+      const y = ps.getY(k);
+      const z = ps.getZ(k);
+      const a = Math.atan2(z, x);
+      const top = (y + 0.19) / 0.38; // 0 у основания, 1 сверху
+      const plate = 1 + 0.13 * Math.pow(Math.abs(Math.cos(a * 3)), 3) - 0.05;
+      const jag = top > 0.95 ? 1 - 0.18 * Math.abs(Math.sin(a * 6)) : 1;
+      ps.setXYZ(k, x * plate, y * jag, z * plate);
+    }
+    barnGeo.computeVertexNormals();
+  }
   barnGeo.translate(0, 0.17, 0);
-  const capGeo = new THREE.CircleGeometry(0.16, 9);
-  capGeo.rotateX(-Math.PI / 2);
-  capGeo.translate(0, 0.36, 0);
-  const barnMat = new THREE.MeshStandardMaterial({ color: 0xb4ae9c, roughness: 0.95, side: THREE.DoubleSide });
-  const holeMat = new THREE.MeshStandardMaterial({ color: 0x1d2124, roughness: 1 });
+  // отверстие утоплено внутрь и прикрыто створками, а не чёрная крышка поверх
+  const capGeo = new THREE.ConeGeometry(0.15, 0.12, 9, 1, true);
+  capGeo.rotateX(Math.PI);
+  capGeo.translate(0, 0.31, 0);
+  const barnMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.92, side: THREE.DoubleSide });
+  const holeMat = new THREE.MeshStandardMaterial({ color: 0x2a2622, roughness: 1, side: THREE.DoubleSide });
   const count = 1400;
   const barn = new THREE.InstancedMesh(barnGeo, barnMat, count);
   const holes = new THREE.InstancedMesh(capGeo, holeMat, count);
@@ -155,6 +171,8 @@ export function buildWhale() {
   const nrm = new THREE.Vector3();
   let rs = 7;
   const rnd = () => ((rs = (rs * 16807) % 2147483647) / 2147483647);
+  const barnColor = new THREE.Color();
+  const algae = new THREE.Color(0x4f5c3a);
   let i = 0;
   while (i < count) {
     // центр грозди
@@ -172,12 +190,17 @@ export function buildWhale() {
       nrm.set(backHeight(x - e, z) - backHeight(x + e, z), 2 * e, backHeight(x, z - e) - backHeight(x, z + e)).normalize();
       if (!isFinite(nrm.x)) nrm.copy(up);
       q.setFromUnitVectors(up, nrm);
-      const s = 0.35 + rnd() * rnd() * 1.4;
+      const s = 0.25 + rnd() * rnd() * 1.05;
       sc.set(s, s * (0.7 + rnd() * 0.6), s);
       p.set(x, h - 0.04, z);
       m.compose(p, q, sc);
       barn.setMatrixAt(i, m);
       holes.setMatrixAt(i, m);
+      // известь разного возраста: от серо-бурой до зеленоватой, свежие светлее
+      const tone = rnd();
+      barnColor.setRGB(0.4 + tone * 0.22, 0.38 + tone * 0.2, 0.33 + tone * 0.16, THREE.SRGBColorSpace);
+      if (rnd() < 0.25) barnColor.lerp(algae, 0.35 + rnd() * 0.3);
+      barn.setColorAt(i, barnColor);
       i++;
     }
   }

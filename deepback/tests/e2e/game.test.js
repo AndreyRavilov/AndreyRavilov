@@ -364,7 +364,7 @@ test('ролик можно пропустить пробелом и перес�
 
 test('мини-карта нарисована, у неё есть легенда, M её прячет', async (t) => {
   // тяжёлый тест (чтение пикселей холста) — в свежем браузере
-  const page = await openGame(env, { viewport: { width: 1280, height: 720 }, freshBrowser: true }); t.after(() => page.context().close().catch(() => {}));
+  const page = await openGame(env, { viewport: { width: 960, height: 540 }, freshBrowser: true }); t.after(() => page.context().close().catch(() => {}));
   await startNewRun(page);
   assert.ok(await page.isVisible('#minimap'));
   const legend = await page.textContent('#legend');

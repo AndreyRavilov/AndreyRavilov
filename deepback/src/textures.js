@@ -264,9 +264,9 @@ export function whaleSkin(size = 512) {
     g = g * (1 - algae * 0.35) + 92 * algae * 0.35;
     b = b * (1 - algae * 0.35) + 60 * algae * 0.35;
     // шрамы
-    r += scar * 22; g += scar * 21; b += scar * 20;
+    r += scar * 9; g += scar * 9; b += scar * 8;
     // ракушки
-    const bk = barn * 0.7;
+    const bk = barn * 0.32;
     r = r * (1 - bk) + 190 * bk; g = g * (1 - bk) + 184 * bk; b = b * (1 - bk) + 170 * bk;
     return [clamp(r), clamp(g), clamp(b)];
   });
@@ -275,7 +275,7 @@ export function whaleSkin(size = 512) {
 
 // колонии ракушек: кольца, собранные в пятна
 function barnacle(u, v) {
-  const colony = smoothstepJS(0.62, 0.72, fbm(u * 4, v * 4, 4, 3, 29));
+  const colony = smoothstepJS(0.68, 0.78, fbm(u * 4, v * 4, 4, 3, 29));
   if (colony <= 0) return 0;
   const N = 110;
   const cx = Math.floor(u * N);

@@ -24,7 +24,7 @@ const M = {
   rust: new THREE.MeshStandardMaterial({ color: 0x7a4a33, roughness: 0.9, metalness: 0.3 }),
   dark: new THREE.MeshStandardMaterial({ color: 0x1a1d20, roughness: 0.9 }),
   rope: new THREE.MeshStandardMaterial({ color: 0x8a7a5a, roughness: 1 }),
-  bone: new THREE.MeshStandardMaterial({ color: 0xd9d2bf, roughness: 0.7 }),
+  bone: new THREE.MeshStandardMaterial({ color: 0xcfc1a2, roughness: 0.75 }), // старая слоновая кость
   window: new THREE.MeshStandardMaterial({ color: 0x332211, emissive: 0xffb45a, emissiveIntensity: 0.3 }),
   lamp: new THREE.MeshStandardMaterial({ color: 0xffe2a8, emissive: 0xffb860, emissiveIntensity: 1.5 }),
   hatch: new THREE.MeshBasicMaterial({ color: 0x58f0d8, transparent: true, opacity: 0.55, side: THREE.DoubleSide }),
@@ -543,7 +543,7 @@ export class City {
     const g = new THREE.Group();
     const y = backHeight(x, z);
     const R = 5 + rng() * 2;
-    const arc = new THREE.Mesh(new THREE.TorusGeometry(R, 0.55, 10, 30, Math.PI), M.bone);
+    const arc = new THREE.Mesh(boneArc(R, rng), M.bone);
     g.add(arc);
     g.position.set(x, y - 0.5, z);
     g.rotation.y = rng() * Math.PI;
@@ -703,6 +703,31 @@ export class City {
   }
 }
 
+// Ребро Матери: дуга из позвонков — утолщения через равные промежутки,
+// у земли кость толще, к вершине тоньше; чуть неровная, как настоящая
+export function boneArc(R, rng = Math.random) {
+  const geo = new THREE.TorusGeometry(R, 0.55, 12, 96, Math.PI);
+  const ps = geo.attributes.position;
+  const n = 9 + Math.floor(rng() * 4);
+  const wob = rng() * 6;
+  for (let k = 0; k < ps.count; k++) {
+    const x = ps.getX(k);
+    const y = ps.getY(k);
+    const z = ps.getZ(k);
+    const u = Math.atan2(y, x); // 0..π вдоль дуги
+    const cx = Math.cos(u) * R;
+    const cy = Math.sin(u) * R;
+    const t = u / Math.PI;
+    const base = 1.25 - 0.45 * Math.sin(t * Math.PI); // толще у земли
+    const knob = 0.22 * Math.pow(Math.max(0, Math.cos(t * n * Math.PI * 2)), 6);
+    const lump = 0.05 * Math.sin(t * 23 + wob) * Math.sin(Math.atan2(z, Math.hypot(x, y) - R) * 3);
+    const k2 = base + knob + lump;
+    ps.setXYZ(k, cx + (x - cx) * k2, cy + (y - cy) * k2, z * k2);
+  }
+  geo.computeVertexNormals();
+  return geo;
+}
+
 export function inside(c, x, z, r) {
   if (c.type === 'box') return x > c.minX - r && x < c.maxX + r && z > c.minZ - r && z < c.maxZ + r;
   return Math.hypot(x - c.x, z - c.z) < c.r + r;
@@ -817,10 +842,30 @@ City.prototype.addLines = function (rng) {
         const w = 0.5 + rng() * 0.5;
         const h = 0.5 + rng() * 0.6;
         c.setHex(clothColors[Math.floor(rng() * clothColors.length)]);
-        const p0 = p.clone().addScaledVector(side, -w / 2);
-        const p1 = p.clone().addScaledVector(side, w / 2);
-        const quad = [p0, p1, p1.clone().setY(p1.y - h), p0, p1.clone().setY(p1.y - h), p0.clone().setY(p0.y - h)];
-        for (const q of quad) { pos.push(q.x, q.y, q.z); col.push(c.r, c.g, c.b); }
+        // ткань сеткой 4×3: складки поперёк, низ отдувает ветром, к низу темнее
+        const nrm = new THREE.Vector3(-side.z, 0, side.x);
+        const blow = 0.08 + rng() * 0.14;
+        const folds = 2 + Math.floor(rng() * 3);
+        const at = (i, j) => {
+          const fx = i / 4 - 0.5;
+          const fy = j / 3;
+          const q = p.clone().addScaledVector(side, fx * w);
+          q.y -= fy * h * (1 - Math.abs(fx) * 0.06);
+          q.addScaledVector(nrm, Math.sin(fx * Math.PI * folds) * 0.035 + fy * fy * blow);
+          return q;
+        };
+        const shade = (j) => 1 - (j / 3) * 0.22;
+        for (let i = 0; i < 4; i++) {
+          for (let j = 0; j < 3; j++) {
+            const tri = [[i, j], [i + 1, j], [i + 1, j + 1], [i, j], [i + 1, j + 1], [i, j + 1]];
+            for (const [a2, b2] of tri) {
+              const q = at(a2, b2);
+              const k = shade(b2) * (0.94 + ((a2 + b2) % 2) * 0.06);
+              pos.push(q.x, q.y, q.z);
+              col.push(c.r * k, c.g * k, c.b * k);
+            }
+          }
+        }
       } else {
         const w = 0.32;
         c.setHex(flagColors[Math.floor(rng() * flagColors.length)]);

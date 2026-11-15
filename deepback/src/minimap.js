@@ -37,7 +37,7 @@ export class Minimap {
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     canvas.width = this.w * dpr;
     canvas.height = this.h * dpr;
-    this.ctx = canvas.getContext('2d');
+    this.ctx = canvas.getContext('2d', { willReadFrequently: true }); // маленькая карта: рисуем на процессоре, не гоняя её через видеокарту
     this.ctx.scale(dpr, dpr);
     this.timer = 0;
   }
