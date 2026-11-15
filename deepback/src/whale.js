@@ -208,6 +208,79 @@ export function buildWhale() {
   barn.castShadow = true;
   g.add(barn, holes);
 
+  // --- Лужи в складках кожи: тёмные, зеркальные, отражают небо ---
+  const pudGeo = new THREE.CircleGeometry(1, 24);
+  {
+    const ps = pudGeo.attributes.position;
+    for (let k = 1; k < ps.count; k++) {
+      const a = Math.atan2(ps.getY(k), ps.getX(k));
+      const r = 1 + 0.22 * Math.sin(a * 3 + 1.3) + 0.12 * Math.sin(a * 5 + 0.4);
+      ps.setXY(k, ps.getX(k) * r, ps.getY(k) * r);
+    }
+    pudGeo.rotateX(-Math.PI / 2);
+  }
+  const pudMat = new THREE.MeshStandardMaterial({
+    color: 0x0e171a, roughness: 0.03, metalness: 0.0, envMapIntensity: 1.6, transparent: true, opacity: 0.93,
+    polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
+  });
+  const pudN = 90;
+  const puddles = new THREE.InstancedMesh(pudGeo, pudMat, pudN);
+  // --- Мох и тина кочками вокруг луж и ракушек ---
+  const mossGeo = new THREE.IcosahedronGeometry(1, 1); // кочка: неровный комок, низ уходит в кожу
+  const mossMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1 });
+  const mossN = 1600;
+  const moss = new THREE.InstancedMesh(mossGeo, mossMat, mossN);
+  const mossColor = new THREE.Color();
+  let pi = 0;
+  let mi = 0;
+  let guard = 0;
+  const place = (x, z, lift) => {
+    const h = backHeight(x, z);
+    if (!isFinite(h)) return null;
+    const e = 0.25;
+    nrm.set(backHeight(x - e, z) - backHeight(x + e, z), 2 * e, backHeight(x, z - e) - backHeight(x, z + e)).normalize();
+    if (!isFinite(nrm.x)) return null;
+    q.setFromUnitVectors(up, nrm);
+    p.set(x, h + lift, z);
+    return nrm.y;
+  };
+  while ((pi < pudN || mi < mossN) && guard++ < 20000) {
+    const cu = 0.08 + rnd() * 0.8;
+    const c = pointOnBack(cu, rnd() * Math.PI * 2);
+    // лужа — только где спина почти ровная
+    if (pi < pudN) {
+      const ny = place(c.x, c.z, 0.02);
+      if (ny !== null && ny > 0.985) {
+        const s = 0.5 + rnd() * rnd() * 2.2;
+        sc.set(s * (0.8 + rnd() * 0.6), 1, s);
+        const yaw = new THREE.Quaternion().setFromAxisAngle(up, rnd() * Math.PI);
+        m.compose(p, q.clone().multiply(yaw), sc);
+        puddles.setMatrixAt(pi++, m);
+      }
+    }
+    // кочки мха вокруг
+    const tufts = 6 + Math.floor(rnd() * 14);
+    for (let k = 0; k < tufts && mi < mossN; k++) {
+      const ang = rnd() * Math.PI * 2;
+      const r = 0.8 + rnd() * rnd() * 2.6;
+      if (place(c.x + Math.cos(ang) * r, c.z + Math.sin(ang) * r, -0.02) === null) continue;
+      const s = 0.06 + rnd() * rnd() * 0.22;
+      sc.set(s * (1 + rnd() * 0.6), s * (0.45 + rnd() * 0.35), s * (1 + rnd() * 0.6));
+      m.compose(p, q, sc);
+      moss.setMatrixAt(mi, m);
+      const g2 = rnd();
+      mossColor.setRGB(0.17 + g2 * 0.1, 0.2 + g2 * 0.1, 0.1 + g2 * 0.05, THREE.SRGBColorSpace);
+      moss.setColorAt(mi, mossColor);
+      mi++;
+    }
+  }
+  puddles.count = pi;
+  moss.count = mi;
+  puddles.receiveShadow = true;
+  moss.receiveShadow = true;
+  moss.castShadow = true;
+  g.add(puddles, moss);
+
   return g;
 }
 

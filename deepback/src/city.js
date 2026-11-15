@@ -889,7 +889,16 @@ City.prototype.addLines = function (rng) {
 
 // Дощатые мостки: «улицы» от Ковчега к краям спины, огибают дома
 City.prototype.addWalkways = function (rng) {
-  const geo = new THREE.BoxGeometry(2.0, 0.09, 0.42);
+  // одна доска — одна полоса текстуры (а не шесть, как на стене):
+  // шесть вариантов, чтобы соседние доски отличались рисунком и тоном
+  const variants = [];
+  for (let k = 0; k < 6; k++) {
+    const g = new THREE.BoxGeometry(2.0, 0.09, 0.42);
+    const ps = g.attributes.position;
+    const uv = g.attributes.uv;
+    for (let i = 0; i < ps.count; i++) uv.setXY(i, (k + 0.06 + ((ps.getZ(i) + 0.21) / 0.42) * 0.88) / 6, (ps.getX(i) + 1) / 2);
+    variants.push(g);
+  }
   const q = new THREE.Quaternion();
   const up = new THREE.Vector3(0, 1, 0);
   const n = new THREE.Vector3();
@@ -914,7 +923,7 @@ City.prototype.addWalkways = function (rng) {
       if (!isFinite(y)) break;
       const e = 0.3;
       n.set(backHeight(x - e, z) - backHeight(x + e, z), 2 * e, backHeight(x, z - e) - backHeight(x, z + e)).normalize();
-      const plank = new THREE.Mesh(geo, M.deck);
+      const plank = new THREE.Mesh(variants[Math.floor(rng() * 6)], M.deck);
       plank.position.set(x, y + 0.05, z);
       q.setFromUnitVectors(up, n);
       plank.quaternion.copy(q);
