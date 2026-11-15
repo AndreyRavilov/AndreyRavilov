@@ -587,11 +587,44 @@ export class City {
   addCrate(rng, x, z) {
     const s = 1 + rng() * 0.8;
     const y = backHeight(x, z);
-    const m = new THREE.Mesh(boxProjectUV(new THREE.BoxGeometry(s, s, s), 1.2), rng() < 0.5 ? M.rust : wallMats[2]);
-    m.position.set(x, y + s / 2 - 0.15, z);
-    m.rotation.y = rng() * Math.PI;
-    shadow(m);
-    this.group.add(m);
+    const g = new THREE.Group();
+    g.position.set(x, y + s / 2 - 0.15, z);
+    g.rotation.y = rng() * Math.PI;
+    const metal = rng() < 0.35;
+    // ящик: доски внутри каркаса из брусьев, на боках — диагональные распорки;
+    // железный — гладкие листы с двумя обручами
+    g.add(new THREE.Mesh(boxProjectUV(new THREE.BoxGeometry(s * 0.96, s * 0.96, s * 0.96), metal ? 1.2 : 0.8), metal ? M.rust : M.deck));
+    const t = s * 0.08;
+    const edge = metal ? M.steel : M.trim;
+    for (const a of [-1, 1]) {
+      for (const b of [-1, 1]) {
+        const e1 = new THREE.Mesh(new THREE.BoxGeometry(t, s, t), edge);
+        e1.position.set((a * (s - t)) / 2, 0, (b * (s - t)) / 2);
+        const e2 = new THREE.Mesh(new THREE.BoxGeometry(s, t, t), edge);
+        e2.position.set(0, (a * (s - t)) / 2, (b * (s - t)) / 2);
+        const e3 = new THREE.Mesh(new THREE.BoxGeometry(t, t, s), edge);
+        e3.position.set((a * (s - t)) / 2, (b * (s - t)) / 2, 0);
+        g.add(e1, e2, e3);
+      }
+    }
+    if (metal) {
+      for (const yy of [-0.25, 0.25]) {
+        const hoop = new THREE.Mesh(new THREE.BoxGeometry(s * 1.0, t * 0.7, s * 1.0), M.steel);
+        hoop.position.y = yy * s;
+        g.add(hoop);
+      }
+    } else {
+      for (const side of [0, 1, 2, 3]) {
+        const brace = new THREE.Mesh(new THREE.BoxGeometry(s * 1.2, t * 0.8, t * 0.5), M.trim);
+        brace.rotation.z = Math.PI / 4 * (side % 2 ? 1 : -1);
+        const ang = (side * Math.PI) / 2;
+        brace.position.set(Math.sin(ang) * s * 0.49, 0, Math.cos(ang) * s * 0.49);
+        brace.rotation.y = ang;
+        g.add(brace);
+      }
+    }
+    shadow(g);
+    this.group.add(g);
     const h = s * 0.6;
     this.colliders.push({ type: 'box', minX: x - h, maxX: x + h, minZ: z - h, maxZ: z + h, bottom: y - 1, top: y + s - 0.15 });
   }
