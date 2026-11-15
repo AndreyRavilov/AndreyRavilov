@@ -86,9 +86,10 @@ export function buildWhale() {
   g.add(body);
 
   // --- Хвостовые лопасти ---
-  const finMat = new THREE.MeshStandardMaterial({ color: 0x223640, roughness: 0.8 });
+  const finMat = new THREE.MeshStandardMaterial({ color: 0x4a4540, roughness: 0.85 });
+  g.userData.finMat = finMat;
   const fluke = new THREE.Group();
-  fluke.position.set(0, -6, WHALE.b - 4);
+  fluke.position.set(0, -2.5, WHALE.b - 4);
   for (const s of [-1, 1]) {
     const lobe = new THREE.Mesh(new THREE.SphereGeometry(1, 32, 16), finMat);
     lobe.scale.set(28, 1.6, 11);
@@ -99,13 +100,19 @@ export function buildWhale() {
   g.add(fluke);
   g.userData.fluke = fluke;
 
-  // --- Грудные плавники ---
+  // --- Грудные плавники: шарнир у тела, кончик иногда выходит из воды ---
+  g.userData.fins = [];
   for (const s of [-1, 1]) {
+    const pivot = new THREE.Group();
+    pivot.position.set(s * (WHALE.a - 6), -5, -WHALE.b * 0.38);
+    pivot.rotation.set(0, s * 0.5, 0);
     const fin = new THREE.Mesh(new THREE.SphereGeometry(1, 32, 16), finMat);
     fin.scale.set(24, 1.4, 8);
-    fin.position.set(s * (WHALE.a + 8), -12, -WHALE.b * 0.38);
-    fin.rotation.set(0, s * 0.5, s * 0.45);
-    g.add(fin);
+    fin.position.set(s * 22, 0, 0);
+    pivot.add(fin);
+    pivot.userData.side = s;
+    g.add(pivot);
+    g.userData.fins.push(pivot);
   }
 
   // --- Глаза ---
@@ -295,4 +302,15 @@ export function dressWhale(whale, TEX) {
   skin.roughness = 1;
   skin.color.set(0xffffff);
   skin.needsUpdate = true;
+  // плавники и хвост — та же шкура, только темнее и мокрее
+  const fin = whale.userData.finMat;
+  if (fin) {
+    fin.map = t.map;
+    fin.bumpMap = t.bump;
+    fin.bumpScale = 1.2;
+    fin.roughnessMap = t.rough;
+    fin.roughness = 0.7;
+    fin.color.set(0x8a837c);
+    fin.needsUpdate = true;
+  }
 }
