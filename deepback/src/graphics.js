@@ -264,7 +264,10 @@ export function addCaustics(mat, { wet = false } = {}) {
       .replace('#include <dithering_fragment>', `#include <dithering_fragment>
         float depthC = uLevel - vWPosC.y;
         if (depthC > 0.0 && uCStrength > 0.001) {
-          float k = smoothstep(0.0, 1.5, depthC) * exp(-depthC * 0.08);
+          // блики падают сверху: на крыши и спину — да, на отвесные бока и брюхо — нет
+          vec3 nW = normalize((vec4(normal, 0.0) * viewMatrix).xyz);
+          float upK = smoothstep(0.25, 0.8, nW.y);
+          float k = smoothstep(0.0, 1.5, depthC) * exp(-depthC * 0.08) * upK;
           float cs = causticAt(vWPosC.xz * 0.35, uCTime * 0.6);
           gl_FragColor.rgb += uCColor * cs * k * uCStrength;
         }`);

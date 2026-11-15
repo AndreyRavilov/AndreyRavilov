@@ -68,7 +68,7 @@ export function buildWhale() {
     } else {
       const groove = Math.sin(x * 55) > 0.55;
       const t = Math.min(1, -y / 1.4);
-      c.setHSL(0.08, 0.06, 0.42 + t * 0.25 + (groove ? -0.1 : 0));
+      c.setHSL(0.08, 0.05, 0.24 + t * 0.12 + (groove ? -0.07 : 0)); // брюхо в тени: светлее спины, но не белое
     }
     colors[i * 3] = c.r;
     colors[i * 3 + 1] = c.g;

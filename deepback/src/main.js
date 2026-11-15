@@ -847,6 +847,7 @@ function updateGame(dt) {
     if (!pk.active) continue;
     pk.mesh.rotation.y += dt * 1.2;
     pk.mesh.position.y = pk.y + Math.sin(S.time * 2 + pk.phase) * 0.2;
+    fadeBeam(pk);
   }
 
   updateNavigator(dt);
@@ -1186,6 +1187,14 @@ function introRelic() {
 // Точка из сценария: готовые координаты или «ключ» (игрок, реликвия)
 // ---- Камера ролика не упирается в дома ----
 // Видно ли цель из точки a: отрезок не проходит сквозь постройки и спину Матери
+// столб света над реликвией виден издалека, но вблизи гаснет — иначе он заливает полэкрана
+function fadeBeam(pk) {
+  const beam = pk.mesh.userData.beam;
+  if (!beam) return;
+  const d = Math.hypot(camera.position.x - pk.x, camera.position.z - pk.z);
+  beam.material.opacity = 0.16 * Math.min(1, Math.max(0, (d - 3) / 14));
+  beam.visible = beam.material.opacity > 0.003;
+}
 function lineClear(a, b) {
   // постройка, внутри которой стоит сама цель (Ковчег), — это и есть объект съёмки
   const own = city.colliders.filter((c) => (c.type === 'box'
@@ -1453,6 +1462,7 @@ function updateIntro(dt) {
   for (const pk of city.pickups) {
     pk.mesh.rotation.y += sdt * 1.2;
     pk.mesh.position.y = pk.y + Math.sin(S.time * 2 + pk.phase) * 0.2;
+    fadeBeam(pk);
   }
   updateBlowhole(sdt, p);
   updateAmbient(sdt, p);

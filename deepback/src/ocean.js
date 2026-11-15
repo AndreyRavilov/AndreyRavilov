@@ -88,8 +88,14 @@ void main() {
   float alpha = mix(0.84, 0.97, fres);
   alpha = max(alpha, foam);
   if (under) {
-    col = mix(uDeep * 0.7, uSky * 0.55 + uSunColor * 0.05, fres);
-    alpha = 0.9;
+    // снизу: под острым углом поверхность зеркалит тёмную толщу (полное отражение),
+    // а прямо над головой светится «окно Снелла» с бликами солнца
+    float up = max(dot(n, V), 0.0);
+    float window = smoothstep(0.6, 0.85, up);
+    float ring = smoothstep(0.55, 0.62, up) * (1.0 - smoothstep(0.62, 0.7, up));
+    col = mix(uDeep * 0.55, uSky * 0.6 + uSunColor * 0.08, window);
+    col += uShallow * ring * 0.35 * (0.6 + h1);
+    alpha = 0.92;
   }
   gl_FragColor = vec4(col, alpha);
   #include <tonemapping_fragment>

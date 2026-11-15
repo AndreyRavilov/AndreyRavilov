@@ -669,6 +669,7 @@ export class City {
       );
       col.position.y = -0.9;
       g.add(col);
+      g.userData.beam = col;
     }
     const gy = y ?? this.groundAt(x, z);
     g.position.set(x, gy + 0.9, z);
