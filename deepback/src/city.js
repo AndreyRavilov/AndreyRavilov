@@ -42,6 +42,7 @@ M.trim = new THREE.MeshStandardMaterial({ color: 0x2c2620, roughness: 0.85 });
 M.deck = new THREE.MeshStandardMaterial({ color: 0x7a5c40, roughness: 0.9 });
 M.pool = new THREE.MeshBasicMaterial({ color: 0xff9a40, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, polygonOffset: true, polygonOffsetFactor: -3 });
 M.ao = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.45, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 });
+M.brass = new THREE.MeshStandardMaterial({ color: 0xb08a50, metalness: 0.85, roughness: 0.35 });
 M.net = new THREE.MeshStandardMaterial({ color: 0x3a3a30, roughness: 1, transparent: true, alphaTest: 0.3, side: THREE.DoubleSide });
 export const MATERIALS = M;
 // Текстура мягкого свечения задаётся из браузера (в Node её нет)
@@ -156,13 +157,98 @@ export class City {
       w.lookAt(w.position.x * 2, w.position.y, w.position.z * 2);
       g.add(w);
     }
-    // шлюз
-    const door = new THREE.Mesh(new THREE.BoxGeometry(3.4, 4.6, 1.6), M.dark);
-    door.position.set(0, base + 4.3, R + 0.2);
-    g.add(door);
-    const frame = new THREE.Mesh(new THREE.TorusGeometry(2.3, 0.35, 8, 24), M.steel);
-    frame.position.set(0, base + 4.6, R + 1.0);
-    g.add(frame);
+    const det = new THREE.Group(); // мелкие детали — потом сольём по материалам
+    // латунные рамы иллюминаторов
+    for (let i = 0; i < 10; i++) {
+      const a = (i / 10) * Math.PI * 2 + 0.3;
+      const rim = new THREE.Mesh(new THREE.TorusGeometry(0.66, 0.11, 8, 20), M.brass);
+      rim.position.set(Math.sin(a) * (R + 0.08), base + 6, Math.cos(a) * (R + 0.08));
+      rim.lookAt(rim.position.x * 2, rim.position.y, rim.position.z * 2);
+      det.add(rim);
+    }
+    // вертикальные рёбра-накладки и ряды заклёпок по поясам
+    for (let i = 0; i < 16; i++) {
+      const a = (i / 16) * Math.PI * 2;
+      if (Math.abs(Math.sin(a / 2)) < 0.14) continue; // не перед шлюзом
+      const rib = new THREE.Mesh(new THREE.BoxGeometry(0.32, 8, 0.18), M.steel);
+      rib.position.set(Math.sin(a) * (R + 0.2), base + 4, Math.cos(a) * (R + 0.2));
+      rib.rotation.y = a;
+      det.add(rib);
+    }
+    const rivetGeo = new THREE.SphereGeometry(0.07, 6, 4);
+    const rivets = new THREE.InstancedMesh(rivetGeo, M.steel, 3 * 96);
+    const rm = new THREE.Matrix4();
+    let ri = 0;
+    for (const y of [base + 2.35, base + 5.35, base + 7.65]) {
+      for (let k = 0; k < 96; k++) {
+        const a = (k / 96) * Math.PI * 2;
+        rm.makeTranslation(Math.sin(a) * (R + 0.12), y, Math.cos(a) * (R + 0.12));
+        rivets.setMatrixAt(ri++, rm);
+      }
+    }
+    g.add(rivets); // заклёпки — инстансами, отдельно
+    // шлюз: проём, круглая дверь-люк со штурвалом и петлями, козырёк над ним
+    const recess = new THREE.Mesh(new THREE.BoxGeometry(3.6, 4.8, 1.4), M.dark);
+    recess.position.set(0, base + 4.3, R + 0.1);
+    det.add(recess);
+    const door = new THREE.Mesh(new THREE.CylinderGeometry(1.75, 1.75, 0.35, 28), M.arkWall);
+    door.rotation.x = Math.PI / 2;
+    door.position.set(0, base + 4.4, R + 0.9);
+    det.add(door);
+    const frame = new THREE.Mesh(new THREE.TorusGeometry(1.95, 0.28, 8, 28), M.steel);
+    frame.position.set(0, base + 4.4, R + 0.95);
+    det.add(frame);
+    const wheel = new THREE.Mesh(new THREE.TorusGeometry(0.62, 0.07, 6, 20), M.brass);
+    wheel.position.set(0, base + 4.4, R + 1.2);
+    det.add(wheel);
+    for (let k = 0; k < 3; k++) {
+      const spoke = new THREE.Mesh(new THREE.BoxGeometry(1.24, 0.07, 0.07), M.brass);
+      spoke.rotation.z = (k / 3) * Math.PI;
+      spoke.position.copy(wheel.position);
+      det.add(spoke);
+    }
+    for (const yy of [-1.0, 1.0]) {
+      const hinge = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.5, 8), M.steel);
+      hinge.position.set(-1.85, base + 4.4 + yy, R + 1.0);
+      det.add(hinge);
+    }
+    const canopy = new THREE.Mesh(new THREE.BoxGeometry(4.4, 0.18, 1.8), M.steel);
+    canopy.position.set(0, base + 7.0, R + 1.0);
+    canopy.rotation.x = 0.15;
+    det.add(canopy);
+    // обходная галерея у основания купола: стойки и поручень
+    const rail = new THREE.Mesh(new THREE.TorusGeometry(R + 0.9, 0.06, 6, 64), M.steel);
+    rail.rotation.x = Math.PI / 2;
+    rail.position.y = base + 9.1;
+    det.add(rail);
+    const deck = new THREE.Mesh(new THREE.RingGeometry(R - 0.1, R + 1.0, 64), M.steel);
+    deck.rotation.x = -Math.PI / 2;
+    deck.position.y = base + 8.05;
+    det.add(deck);
+    for (let k = 0; k < 28; k++) {
+      const a = (k / 28) * Math.PI * 2;
+      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 1.05, 5), M.steel);
+      post.position.set(Math.sin(a) * (R + 0.9), base + 8.58, Math.cos(a) * (R + 0.9));
+      det.add(post);
+    }
+    // лестница по куполу к маяку
+    const lad = [];
+    for (let k = 0; k <= 22; k++) {
+      const t = (k / 22) * (Math.PI / 2 - 0.12);
+      const rr = R + 0.25;
+      lad.push(new THREE.Vector3(0, base + 8 + Math.sin(t) * rr, -Math.cos(t) * rr));
+    }
+    for (const sx of [-0.35, 0.35]) {
+      const side = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(lad.map((v) => v.clone().setX(sx))), 24, 0.05, 5), M.steel);
+      det.add(side);
+    }
+    for (let k = 1; k < lad.length; k += 2) {
+      const rung = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.7, 5), M.steel);
+      rung.rotation.z = Math.PI / 2;
+      rung.position.copy(lad[k]);
+      det.add(rung);
+    }
+    g.add(mergeByMaterial(det));
     // маяк на куполе
     const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.25, 6, 8), M.steel);
     mast.position.y = base + 8 + R + 2;
@@ -817,6 +903,28 @@ export class City {
     this.group.add(g);
     this.leeches.push({ mesh: g, segs, x, z, dir: rng() * Math.PI * 2, cool: 0, phase: rng() * 6, push: null });
   }
+}
+
+// Слить все меши группы в один на каждый материал (меньше вызовов отрисовки)
+function mergeByMaterial(group) {
+  group.updateMatrixWorld(true);
+  const buckets = new Map();
+  group.traverse((m) => {
+    if (!m.isMesh) return;
+    const geo = (m.geometry.index ? m.geometry.toNonIndexed() : m.geometry.clone()).applyMatrix4(m.matrixWorld);
+    for (const k of Object.keys(geo.attributes)) if (!['position', 'normal', 'uv'].includes(k)) geo.deleteAttribute(k);
+    if (!geo.attributes.uv) geo.setAttribute('uv', new THREE.Float32BufferAttribute(new Float32Array(geo.attributes.position.count * 2), 2));
+    if (!buckets.has(m.material)) buckets.set(m.material, []);
+    buckets.get(m.material).push(geo);
+  });
+  const out = new THREE.Group();
+  for (const [mat, geos] of buckets) {
+    const mesh = new THREE.Mesh(mergeGeometries(geos), mat);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    out.add(mesh);
+  }
+  return out;
 }
 
 // Кран: брусья-уголки между точками, мачта-ферма 1×1 м, стрела-ферма до 16 м
