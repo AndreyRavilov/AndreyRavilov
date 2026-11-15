@@ -2104,12 +2104,30 @@ function updateCamera(dt) {
     px = ark.x + (px - ark.x) * k;
     pz = ark.z + (pz - ark.z) * k;
   }
+  // дома и прочие постройки: если между ныряльщиком и камерой стена — камера подъезжает
+  // к ней вплотную (быстро), а когда стена ушла — плавно отъезжает обратно
+  let free = 1;
+  for (let i = 1; i <= 30; i++) {
+    const t = i / 30;
+    const x = camTarget.x + (px - camTarget.x) * t;
+    const z = camTarget.z + (pz - camTarget.z) * t;
+    const y = camTarget.y + (cy - camTarget.y) * t;
+    if (city.colliders.some((c) => c.type === 'box' && y < c.top + 0.4 && y > c.bottom && x > c.minX - 0.35 && x < c.maxX + 0.35 && z > c.minZ - 0.35 && z < c.maxZ + 0.35)) {
+      free = Math.max(0.12, (i - 1.5) / 30);
+      break;
+    }
+  }
+  camFree = free < camFree ? free : camFree + (free - camFree) * Math.min(1, dt * 2.5);
+  px = camTarget.x + (px - camTarget.x) * camFree;
+  pz = camTarget.z + (pz - camTarget.z) * camFree;
+  cy = camTarget.y + (cy - camTarget.y) * camFree;
   const bh = backHeight(px, pz);
   if (cy < bh + 0.6) cy = bh + 0.6;
   camera.position.set(px, cy, pz);
   camera.lookAt(camTarget);
   cameraEnv(Math.min(1, S.t / S.T));
 }
+let camFree = 1;
 
 // Чайки, дым, пузыри, брызги, луч маяка — общий для игры, ролика и меню
 function shorePoint() {
