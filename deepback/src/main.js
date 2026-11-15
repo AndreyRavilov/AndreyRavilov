@@ -2322,7 +2322,7 @@ function frame() {
     const slow = Math.sin(S.time * 0.12);
     whale.userData.fluke.rotation.x = -0.12 - Math.max(0, slow) * 0.42 + Math.sin(S.time * 0.5) * 0.05;
   }
-  for (const f of whale.userData.fins || []) f.rotation.z = f.userData.side * (0.18 + Math.sin(S.time * 0.25 + f.userData.side) * 0.22);
+  for (const f of whale.userData.fins || []) f.rotation.z = f.userData.side * (0.12 + Math.sin(S.time * 0.25 + f.userData.side) * 0.16);
   if (S.debugCam) {
     camera.position.fromArray(S.debugCam[0]);
     camera.lookAt(...S.debugCam[1]);

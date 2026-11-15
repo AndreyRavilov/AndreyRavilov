@@ -104,7 +104,7 @@ export function buildWhale() {
   g.userData.fins = [];
   for (const s of [-1, 1]) {
     const pivot = new THREE.Group();
-    pivot.position.set(s * (WHALE.a - 6), -5, -WHALE.b * 0.38);
+    pivot.position.set(s * (WHALE.a - 6), -7.5, -WHALE.b * 0.38);
     pivot.rotation.set(0, s * 0.5, 0);
     const fin = new THREE.Mesh(new THREE.SphereGeometry(1, 32, 16), finMat);
     fin.scale.set(24, 1.4, 8);
