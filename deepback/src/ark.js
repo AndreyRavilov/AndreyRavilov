@@ -48,11 +48,25 @@ function villager(look) {
     parent.add(m);
     return m;
   };
-  for (const s of [-0.13, 0.13]) add(new THREE.CapsuleGeometry(0.11, 0.5, 4, 8), dark, s, 0.38, 0);
+  for (const s of [-0.13, 0.13]) {
+    add(new THREE.CapsuleGeometry(0.11, 0.5, 4, 8), dark, s, 0.38, 0);
+    // тяжёлые сапоги
+    add(new THREE.BoxGeometry(0.17, 0.12, 0.28), std(0x1c1612, { roughness: 0.55 }), s, 0.06, -0.04);
+  }
   const torso = add(new THREE.CapsuleGeometry(0.3, 0.55, 6, 12), body, 0, 1.05, 0);
   torso.scale.set(1, 1, 0.8);
   // фартук/юбка — расширение книзу
   add(new THREE.CylinderGeometry(0.3, 0.42, 0.45, 12), body, 0, 0.72, 0);
+  // пояс с пряжкой, воротник, пуговицы и заплатка
+  const belt = add(new THREE.TorusGeometry(0.31, 0.035, 6, 20), std(0x2b1d14, { roughness: 0.5 }), 0, 0.92, 0);
+  belt.rotation.x = Math.PI / 2;
+  belt.scale.set(1, 0.82, 1);
+  add(new THREE.BoxGeometry(0.08, 0.06, 0.03), std(0xb08a50, { metalness: 0.8, roughness: 0.35 }), 0, 0.92, -0.255);
+  const collar = add(new THREE.TorusGeometry(0.17, 0.05, 6, 16), body, 0, 1.52, 0);
+  collar.rotation.x = Math.PI / 2;
+  for (const y of [1.36, 1.2, 1.04]) add(new THREE.SphereGeometry(0.022, 6, 4), std(0x3a2c22), 0, y, -0.245);
+  const patchCol = new THREE.Color(look.body).offsetHSL(0.03, -0.15, -0.07);
+  add(new THREE.BoxGeometry(0.12, 0.12, 0.02), std(patchCol), 0.13, 1.12, -0.235).rotation.z = 0.3;
   const arms = [];
   for (const s of [-1, 1]) {
     const arm = new THREE.Group();
@@ -67,8 +81,19 @@ function villager(look) {
   head.position.y = 1.72;
   g.add(head);
   add(new THREE.SphereGeometry(0.2, 16, 12), skin, 0, 0, 0, head);
-  // глаза смотрят вперёд (по -z)
-  for (const s of [-0.07, 0.07]) add(new THREE.SphereGeometry(0.025, 6, 4), std(0x111111), s, 0.03, -0.18, head);
+  // лицо смотрит вперёд (по -z): белки и зрачки, брови, нос, уши, рот
+  const white = std(0xf2ece0, { roughness: 0.3 });
+  const pupil = std(0x15110e, { roughness: 0.2 });
+  for (const s of [-0.07, 0.07]) {
+    add(new THREE.SphereGeometry(0.03, 8, 6), white, s, 0.03, -0.172, head).scale.set(1, 0.8, 0.6);
+    add(new THREE.SphereGeometry(0.016, 6, 4), pupil, s, 0.03, -0.192, head);
+    const brow = add(new THREE.BoxGeometry(0.06, 0.012, 0.015), std(look.hair), s, 0.085, -0.178, head);
+    brow.rotation.z = -s * 1.5;
+    add(new THREE.SphereGeometry(0.04, 8, 6), skin, s * 2.75, 0.0, -0.01, head).scale.set(0.5, 1, 0.8);
+  }
+  const nose = add(new THREE.SphereGeometry(0.035, 8, 6), std(new THREE.Color(look.skin).offsetHSL(0, 0.05, -0.06), { roughness: 0.6 }), 0, -0.02, -0.2, head);
+  nose.scale.set(0.8, 1, 1.2);
+  add(new THREE.BoxGeometry(0.07, 0.012, 0.01), std(0x5a2e26), 0, -0.085, -0.182, head);
   const hairMat = std(look.hair);
   const hair = add(new THREE.SphereGeometry(0.205, 16, 10, 0, Math.PI * 2, 0, Math.PI * 0.55), hairMat, 0, 0.02, 0.02, head);
   hair.rotation.x = -0.25;
