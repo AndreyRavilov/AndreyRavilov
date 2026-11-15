@@ -126,7 +126,26 @@ for (let i = 0; i < BLOW_N; i++) resetBlowParticle(i);
 // пунктир навигатора на земле
 const NAV_DOTS = 160;
 const navMat = new THREE.MeshBasicMaterial({ color: 0x58f0d8, transparent: true, opacity: 0.9, depthWrite: false });
-const navDots = new THREE.InstancedMesh(new THREE.OctahedronGeometry(0.2, 0), navMat, NAV_DOTS);
+// пунктир навигатора — плоские стрелки-«галочки» на земле, остриём к цели
+const navArrowGeo = (() => {
+  const sh = new THREE.Shape();
+  sh.moveTo(0, 0.32);
+  sh.lineTo(0.3, -0.06);
+  sh.lineTo(0.17, -0.06);
+  sh.lineTo(0, 0.15);
+  sh.lineTo(-0.17, -0.06);
+  sh.lineTo(-0.3, -0.06);
+  sh.lineTo(0, 0.32);
+  const g = new THREE.ShapeGeometry(sh);
+  g.rotateX(-Math.PI / 2); // лежит на земле, остриём к -z
+  return g;
+})();
+navMat.side = THREE.DoubleSide;
+const navDots = new THREE.InstancedMesh(navArrowGeo, navMat, NAV_DOTS);
+const navQ = new THREE.Quaternion();
+const navS = new THREE.Vector3();
+const navP = new THREE.Vector3();
+const navUp = new THREE.Vector3(0, 1, 0);
 navDots.frustumCulled = false;
 navDots.count = 0;
 navDots.renderOrder = 3;
@@ -1153,10 +1172,17 @@ function updateNavigator(dt) {
     const pts = S.navPath.slice();
     pts[0] = { x: player.pos.x, z: player.pos.z };
     const dots = NAV.dotsAlong(pts, 1.4, 1.2 + ((S.time * 2.2) % 1.4), NAV_DOTS);
-    for (const d of dots) {
+    for (let i = 0; i < dots.length; i++) {
+      const d = dots[i];
+      const nx = dots[Math.min(i + 1, dots.length - 1)];
+      const pv = dots[Math.max(i - 1, 0)];
       const bh = backHeight(d.x, d.z);
-      const y = isFinite(bh) ? city.groundAt(d.x, d.z, bh + 0.4) + 0.45 : ocean.surfaceAt(d.x, d.z) + 0.3;
-      navM.makeTranslation(d.x, y, d.z);
+      const y = isFinite(bh) ? city.groundAt(d.x, d.z, bh + 0.4) + 0.07 : ocean.surfaceAt(d.x, d.z) + 0.15;
+      // остриё — вдоль маршрута; у самой камеры стрелки мельче, чтобы не заслонять кадр
+      navQ.setFromAxisAngle(navUp, Math.atan2(-(nx.x - pv.x), -(nx.z - pv.z)));
+      const dc = Math.hypot(d.x - camera.position.x, y - camera.position.y, d.z - camera.position.z);
+      navS.setScalar(Math.min(1.2, Math.max(0.35, (dc - 1) / 4)));
+      navM.compose(navP.set(d.x, y, d.z), navQ, navS);
       navDots.setMatrixAt(n++, navM);
     }
   }

@@ -70,18 +70,29 @@ void main() {
   float shallow = u < 1.0 ? smoothstep(7.0, 0.0, over) : 0.0;
 
   vec3 base = mix(uDeep, uShallow, 0.08 + 0.22 * h1);
+  // крупные пятна: тени облаков и полосы течений, медленно плывут
+  float big = detail(vWorld.xz * 0.0035 + vec2(uTime * 0.002, uTime * 0.0013));
+  float band = detail(vec2(vWorld.x * 0.0012, vWorld.z * 0.006) + vec2(-uTime * 0.001, 0.0));
+  base *= 0.82 + 0.3 * big;
+  base = mix(base, uShallow * 0.9, smoothstep(0.62, 0.8, band) * 0.18);
   base = mix(base, uShallow * 1.35 + vec3(0.02, 0.06, 0.05), shallow * 0.7);
   vec3 col = mix(base, uSky, clamp(fres * 0.9, 0.0, 1.0));
 
   // солнце
   vec3 H = normalize(normalize(uSunDir) + V);
   float spec = pow(max(dot(n, H), 0.0), 220.0) * 2.2 + pow(max(dot(n, H), 0.0), 24.0) * 0.08;
+  // солнечные искры на ряби
+  float glint = step(0.93, detail(vWorld.xz * 0.6 + vec2(uTime * 0.3, -uTime * 0.25)));
+  spec += glint * pow(max(dot(n, H), 0.0), 40.0) * 1.5;
   col += uSunColor * spec;
 
   // пена у кромки, где Мать выходит из воды, и на гребнях
   float fn = detail(vWorld.xz * 0.18 + vec2(uTime * 0.06, -uTime * 0.04));
   float shore = u < 1.08 ? smoothstep(1.4, 0.0, abs(over)) : 0.0;
   float crest = smoothstep(0.78, 0.95, h1 + (vNormalW.y < 0.985 ? 0.1 : 0.0)) * 0.25;
+  // пенные полосы по ветру: тянутся вдоль x, рвутся мелким шумом
+  float streak = smoothstep(0.7, 0.85, detail(vec2(vWorld.x * 0.01, vWorld.z * 0.05) + vec2(uTime * 0.01, 0.0)));
+  crest += streak * smoothstep(0.5, 0.75, h2) * 0.35;
   float foam = clamp(shore * smoothstep(0.30, 0.65, fn + shore * 0.25) + crest * fn, 0.0, 1.0);
   col = mix(col, vec3(0.90, 0.95, 0.97), foam * 0.9);
 
