@@ -1048,6 +1048,7 @@ function updateWeather(dt) {
     for (let i = 0; i < RAIN_N; i++) if (rainPos[i * 6 + 4] < -10) resetDrop(i, true);
     rainGeo.attributes.position.needsUpdate = true;
     rain.position.set(camera.position.x, camera.position.y - 10, camera.position.z);
+    updateSplashes(dt);
     // молнии
     // порывы ветра: затишье 6–10 с, порыв ~3 с с плавным нарастанием
     const G = S.gust;
@@ -1087,6 +1088,49 @@ function updateWeather(dt) {
     hemi.intensity += 3 * Math.max(0, S.flash) / 0.25;
     skyMat.uniforms.horizon.value.lerp(new THREE.Color(0xdde8ff), Math.max(0, S.flash) * 2);
   }
+}
+
+// Брызги дождя: расходящиеся кольца на земле и воде вокруг игрока.
+// Прозрачность — через цвет экземпляра при сложении цветов (чёрный = невидим)
+const SPLASH_N = 90;
+const splashes = new THREE.InstancedMesh(
+  new THREE.RingGeometry(0.75, 1, 16).rotateX(-Math.PI / 2),
+  new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: true }),
+  SPLASH_N,
+);
+splashes.frustumCulled = false;
+splashes.count = 0;
+scene.add(splashes);
+const splashLife = new Float32Array(SPLASH_N);
+const splashPos = new Float32Array(SPLASH_N * 3);
+const splashM = new THREE.Matrix4();
+const splashC = new THREE.Color();
+function updateSplashes(dt) {
+  const show = rain.visible;
+  splashes.count = show ? SPLASH_N : 0;
+  if (!show) return;
+  for (let i = 0; i < SPLASH_N; i++) {
+    splashLife[i] -= dt * 2.2;
+    if (splashLife[i] <= 0) {
+      splashLife[i] = 0.6 + Math.random() * 0.4;
+      const a = Math.random() * Math.PI * 2;
+      const r = 1 + Math.sqrt(Math.random()) * 16;
+      const x = player.pos.x + Math.cos(a) * r;
+      const z = player.pos.z + Math.sin(a) * r;
+      const bh = backHeight(x, z);
+      const water = ocean.surfaceAt(x, z);
+      splashPos[i * 3] = x;
+      splashPos[i * 3 + 1] = Math.max(isFinite(bh) ? city.groundAt(x, z, bh + 0.4) : -1e9, water) + 0.04;
+      splashPos[i * 3 + 2] = z;
+    }
+    const k = splashLife[i];
+    const size = 0.05 + (1 - k) * 0.35;
+    splashM.makeScale(size, 1, size).setPosition(splashPos[i * 3], splashPos[i * 3 + 1], splashPos[i * 3 + 2]);
+    splashes.setMatrixAt(i, splashM);
+    splashes.setColorAt(i, splashC.setScalar(Math.max(0, k) * 0.55));
+  }
+  splashes.instanceMatrix.needsUpdate = true;
+  if (splashes.instanceColor) splashes.instanceColor.needsUpdate = true;
 }
 
 // Молния: ломаный канал с ответвлениями бьёт в море в 150–400 м от игрока
