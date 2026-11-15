@@ -172,6 +172,43 @@ export function paintedPanels(paintRGB = [96, 128, 124], size = 256) {
   return { map: finish(col), bump: finish(bump, 1, false), rough: finish(rough, 1, false) };
 }
 
+// --- Брезент водолазного костюма: саржевое плетение, потёртости, грязные разводы ---
+export function canvasCloth(size = 256) {
+  const map = paint(size, (u, v) => {
+    const wu = Math.sin((u * 96 + v * 96) * Math.PI) * 0.5 + 0.5; // диагональ саржи
+    const wv = Math.sin(v * 192 * Math.PI) * 0.5 + 0.5;
+    const weave = 0.9 + 0.1 * (wu * 0.6 + wv * 0.4);
+    const dirt = fbm(u * 4, v * 4, 4, 4, 91);
+    const wear = smoothstepJS(0.62, 0.75, fbm(u * 10, v * 10, 10, 3, 92));
+    const k = weave * (0.88 + dirt * 0.2) * (1 - wear * 0.18);
+    return [clamp(255 * k), clamp(240 * k - dirt * 25), clamp(225 * k - dirt * 40)];
+  });
+  const bump = paint(size, (u, v) => {
+    const wu = Math.sin((u * 96 + v * 96) * Math.PI) * 0.5 + 0.5;
+    const wv = Math.sin(v * 192 * Math.PI) * 0.5 + 0.5;
+    return clamp(100 + wu * 90 + wv * 50);
+  });
+  return { map: finish(map), bump: finish(bump, 1, false) };
+}
+
+// --- Латунь с патиной: светлая на выпуклом, зелень окисла пятнами ---
+export function brassPatina(size = 256) {
+  const map = paint(size, (u, v) => {
+    const n = fbm(u * 6, v * 6, 6, 4, 95);
+    const verd = smoothstepJS(0.64, 0.78, fbm(u * 5, v * 5, 5, 4, 96));
+    const r = 255 * (0.95 - n * 0.15);
+    const g = 255 * (0.9 - n * 0.15);
+    const b = 255 * (0.82 - n * 0.12);
+    return [clamp(r * (1 - verd) + 110 * verd), clamp(g * (1 - verd) + 170 * verd), clamp(b * (1 - verd) + 140 * verd)];
+  });
+  const rough = paint(size, (u, v) => {
+    const verd = smoothstepJS(0.64, 0.78, fbm(u * 5, v * 5, 5, 4, 96));
+    const scratch = Math.max(0, fbm(u * 60, v * 3, 60, 2, 97) - 0.7) * 2;
+    return clamp(70 + verd * 160 + fbm(u * 20, v * 20, 20, 3, 98) * 40 - scratch * 50);
+  });
+  return { map: finish(map), rough: finish(rough, 1, false) };
+}
+
 // --- Черепица / дранка: ряды со сдвигом ---
 export function shingles(tint = [120, 60, 45], size = 256) {
   const R = 8;

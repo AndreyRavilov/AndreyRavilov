@@ -86,6 +86,7 @@ const whale = buildWhale();
 scene.add(whale);
 const ocean = new Ocean(scene, { detail: TEX.waveDetail() });
 dressWhale(whale, TEX);
+const DIVER_TEX = { cloth: TEX.canvasCloth(), patina: TEX.brassPatina() };
 dressMaterials(TEX);
 // каустика на коже Матери и на постройках
 addCaustics(whale.userData.skin, { wet: true });
@@ -94,6 +95,7 @@ for (const mtl of MATERIALS.walls || []) addCaustics(mtl);
 for (const mtl of MATERIALS.roofs || []) addCaustics(mtl);
 const city = new City(scene);
 const player = new Player(scene);
+player.dress(DIVER_TEX.cloth, DIVER_TEX.patina);
 const audio = new Audio();
 const voice = new Voice();
 const deeplings = [new Deepling(scene, 0.5), new Deepling(scene, 3.6)];
@@ -2238,7 +2240,11 @@ const coop = createCoop({
         : [{ label: 'Войти в Ковчег', onClick: enterArk }],
     });
   },
-  makeRemote: () => new RemoteDiver(Player, { day: scene, ark: ark.scene }),
+  makeRemote: () => {
+    const r = new RemoteDiver(Player, { day: scene, ark: ark.scene });
+    r.body.dress(DIVER_TEX.cloth, DIVER_TEX.patina);
+    return r;
+  },
   label: (peer, pos, name, carried, where) => {
     let el = netLabels.get(peer);
     if (!pos) {

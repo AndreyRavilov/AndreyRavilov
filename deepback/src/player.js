@@ -40,6 +40,7 @@ export class Player {
     const lampMat = new THREE.MeshStandardMaterial({ color: 0xfff2c8, emissive: 0xffd080, emissiveIntensity: 2, side: THREE.DoubleSide });
     suit.color.set(0xc9772c);
     this.suitMat = suit; // в совместной игре у каждого ныряльщика свой цвет костюма
+    this.brassMat = brass;
     suit.roughness = 0.92;
     const add = (geo, mat, x, y, z, parent = g) => {
       const m = new THREE.Mesh(geo, mat);
@@ -178,6 +179,18 @@ export class Player {
     };
     g.traverse((c) => c.isMesh && (c.castShadow = true));
     return g;
+  }
+
+  // Текстуры костюма и латуни (в браузере; в тестах под Node холста нет)
+  dress(cloth, patina) {
+    this.suitMat.map = cloth.map;
+    this.suitMat.bumpMap = cloth.bump;
+    this.suitMat.bumpScale = 0.6;
+    this.suitMat.needsUpdate = true;
+    this.brassMat.map = patina.map;
+    this.brassMat.roughnessMap = patina.rough;
+    this.brassMat.roughness = 1;
+    this.brassMat.needsUpdate = true;
   }
 
   get weight() {
