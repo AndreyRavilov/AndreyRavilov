@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { mergeGeometries } from '../vendor/addons/utils/BufferGeometryUtils.js';
 import { buildWhale, dressWhale, backHeight, backU, BLOWHOLE, WHALE } from './whale.js';
 import { Ocean } from './ocean.js';
 import { City, HATCH, SPAWN, ITEM, MATERIALS, dressMaterials } from './city.js';
@@ -1065,6 +1066,7 @@ function updateWeather(dt) {
     if (S.thunderTimer <= 0) {
       S.thunderTimer = 7 + Math.random() * 9;
       S.flash = 0.25;
+      strikeBolt();
       audio.thunder();
     }
   } else if (S.weather === 'fog') {
@@ -1074,11 +1076,59 @@ function updateWeather(dt) {
   } else if (S.weather === 'calm') {
     sun.intensity *= 1.1;
   }
+  if (bolt) {
+    // разряд мерцает и гаснет вместе со вспышкой
+    const k = Math.max(0, S.flash) / 0.25;
+    bolt.visible = k > 0.02 && Math.sin(S.time * 90) > -0.6;
+    bolt.material.opacity = k;
+  }
   if (S.flash > 0) {
     S.flash -= dt;
     hemi.intensity += 3 * Math.max(0, S.flash) / 0.25;
     skyMat.uniforms.horizon.value.lerp(new THREE.Color(0xdde8ff), Math.max(0, S.flash) * 2);
   }
+}
+
+// Молния: ломаный канал с ответвлениями бьёт в море в 150–400 м от игрока
+let bolt = null;
+const boltMat = new THREE.MeshBasicMaterial({ color: 0xe8f0ff, transparent: true, fog: false, toneMapped: false, depthWrite: false, blending: THREE.AdditiveBlending });
+function boltPath(from, to, steps, jag) {
+  const pts = [from.clone()];
+  for (let i = 1; i < steps; i++) {
+    const t = i / steps;
+    const p = from.clone().lerp(to, t);
+    p.x += (Math.random() - 0.5) * jag;
+    p.z += (Math.random() - 0.5) * jag;
+    pts.push(p);
+  }
+  pts.push(to.clone());
+  return pts;
+}
+function strikeBolt() {
+  if (bolt) {
+    scene.remove(bolt);
+    bolt.traverse((m) => m.geometry && m.geometry.dispose());
+  }
+  const a = Math.random() * Math.PI * 2;
+  const d = 150 + Math.random() * 250;
+  const ground = new THREE.Vector3(player.pos.x + Math.cos(a) * d, ocean.level, player.pos.z + Math.sin(a) * d);
+  const top = ground.clone().add(new THREE.Vector3((Math.random() - 0.5) * 60, 160, (Math.random() - 0.5) * 60));
+  const main = boltPath(top, ground, 18, 22);
+  const geos = [new THREE.TubeGeometry(new THREE.CatmullRomCurve3(main, false, 'catmullrom', 0), 64, 0.9, 4)];
+  for (let b = 0; b < 3; b++) {
+    const i = 3 + Math.floor(Math.random() * 10);
+    const start = main[i];
+    const end = start.clone().add(new THREE.Vector3((Math.random() - 0.5) * 70, -30 - Math.random() * 40, (Math.random() - 0.5) * 70));
+    geos.push(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(boltPath(start, end, 7, 12), false, 'catmullrom', 0), 24, 0.45, 4));
+  }
+  bolt = new THREE.Mesh(mergeGeos(geos), boltMat);
+  bolt.frustumCulled = false;
+  scene.add(bolt);
+}
+function mergeGeos(geos) {
+  const merged = mergeGeometries(geos.map((g) => g.toNonIndexed()));
+  geos.forEach((g) => g.dispose());
+  return merged;
 }
 
 // ============ Навигатор и мини-карта ============
@@ -2278,7 +2328,7 @@ $('coop-btn').addEventListener('click', () => {
 });
 
 // для фона меню и для автотестов
-window.__deepback = { coop, showArmsHint, planShot: (s) => planShot(s), cameraRoomy: (c, r) => cameraRoomy(c, r), ark, enterArk, killLeech, lineClear: (...a) => lineClear(...a), introPoint: (s) => introPoint(s), S, sky, envScene, whale, ambient, scene, post, voice, intro, startIntro, endIntro, player, city, ocean, deeplings, rain, navDots, startRun, startDay, endDay, keys, pressed, setYaw: (v) => (yaw = v) };
+window.__deepback = { coop, strikeBolt: () => strikeBolt(), get bolt() { return bolt; }, showArmsHint, planShot: (s) => planShot(s), cameraRoomy: (c, r) => cameraRoomy(c, r), ark, enterArk, killLeech, lineClear: (...a) => lineClear(...a), introPoint: (s) => introPoint(s), S, sky, envScene, whale, ambient, scene, post, voice, intro, startIntro, endIntro, player, city, ocean, deeplings, rain, navDots, startRun, startDay, endDay, keys, pressed, setYaw: (v) => (yaw = v) };
 
 // ============ Цикл ============
 const clock = new THREE.Clock();
