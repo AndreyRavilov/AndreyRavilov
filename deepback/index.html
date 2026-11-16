@@ -71,6 +71,12 @@
   #quest { flex-basis: 100%; text-align: right; font-size: 13px; color: #ffc9df; }
   #quest.done { color: var(--accent); }
   .toast.relic { border-color: var(--relic); color: #d8fdff; }
+  body.photo #hud, body.photo #net-labels, body.photo #arms-hint { opacity: 0; pointer-events: none; }
+  body.photo #toasts .toast:not(:last-child) { display: none; }
+  .diff { display: flex; gap: 6px; align-items: center; margin: 0 0 12px; font-size: 13px; color: var(--muted); flex-wrap: wrap; }
+  .diff span { margin-right: 4px; }
+  .diff button { padding: 6px 12px; font-size: 12px; letter-spacing: .04em; background: transparent; color: var(--muted); border: 1px solid var(--line); }
+  .diff button.on { color: #04211d; background: var(--accent); border-color: var(--accent); }
   .toast.achv { border-color: #e8c547; color: #fff4c8; background: linear-gradient(90deg, rgba(60,48,12,.92), rgba(8,20,26,.88)); }
   .achv-list { list-style: none; padding: 0; margin: 6px 0 0; display: grid; gap: 4px; font-size: 14px; color: var(--muted); }
   .achv-list li.got { color: #fff0b8; }
@@ -269,8 +275,10 @@
       <kbd>R</kbd><span>у шлюза: укрыться и закончить день</span>
       <kbd>Tab</kbd><span>навигатор: сменить цель пунктира</span>
       <kbd>M</kbd><span>скрыть / показать мини-карту</span>
-      <kbd>J</kbd><span>журнал реликвий</span>
+      <kbd>J</kbd><span>журнал и достижения</span>
+      <kbd>H</kbd><span>фото-режим: скрыть интерфейс</span>
     </div>
+    <div id="diff" class="diff"><span>Сложность</span><button data-diff="easy">Спокойная</button><button data-diff="normal">Обычная</button><button data-diff="hard">Суровая</button></div>
     <div class="menu-btns">
       <button id="continue" class="hidden">ПРОДОЛЖИТЬ</button>
       <button id="start">НАЧАТЬ ПЕРВЫЙ ДЕНЬ</button>

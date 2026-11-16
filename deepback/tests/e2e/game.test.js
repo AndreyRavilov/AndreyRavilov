@@ -284,6 +284,10 @@ test('семь реликвий: выбор и каждый из трёх фин
     await clickModalButton(page, 'Дальше');
     await page.locator('#modal-title', { hasText: 'Выбор' }).waitFor();
     await clickModalButton(page, ending);
+    // финальная заставка: облёт с текстом финала, Space — пропустить
+    await waitFor(page, () => window.__deepback.S.mode === 'outro' && !document.getElementById('cine').classList.contains('hidden'));
+    await waitFor(page, () => document.getElementById('cine-sub').textContent.length > 20);
+    await page.keyboard.press('Space');
     await page.locator('#modal-title', { hasText: `Финал: ${ending}` }).waitFor();
     await clickModalButton(page, 'Сыграть снова');
     await waitFor(page, () => window.__deepback.S.mode === 'day' && window.__deepback.S.cycle === 1 && window.__deepback.S.lore === 0);
@@ -698,5 +702,18 @@ test('лодка торговца: причаливает, обмен меняе
   const after = await game(page, () => ({ food: window.__deepback.S.food, scrap: window.__deepback.S.scrap }));
   assert.deepEqual(after, { food: before.food - 2, scrap: before.scrap + 3 });
   await clickModalButton(page, 'Отойти');
+  assert.deepEqual(page.errors, []);
+});
+
+test('сложность: выбор в меню меняет длину дня и сохраняется', async (t) => {
+  const page = await openGame(env); t.after(() => page.context().close().catch(() => {}));
+  await page.click('#diff button[data-diff="easy"]');
+  await startNewRun(page);
+  const easy = await game(page, () => ({ diff: window.__deepback.S.diff, T: window.__deepback.S.T }));
+  assert.equal(easy.diff, 'easy');
+  await game(page, () => { const d = window.__deepback; d.S.diff = 'hard'; d.startDay(); });
+  const hard = await game(page, () => window.__deepback.S.T);
+  assert.ok(easy.T > hard * 1.3, `спокойный день ${easy.T} с, суровый ${hard} с`);
+  assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('deepback-settings-v1')).diff), 'easy');
   assert.deepEqual(page.errors, []);
 });

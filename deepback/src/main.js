@@ -24,6 +24,7 @@ import { NIGHT_ROLES, nightLine } from './residents.js';
 import { createCoop, RemoteDiver } from './coop.js';
 import { REGIONS, regionFor, buildRegion, animateRegion } from './regions.js';
 import { Schools } from './schools.js';
+import { DistantGiant } from './giant.js';
 import { TraderBoat, OFFERS, trade, traderComes } from './trader.js';
 import { Achievements, ACHIEVEMENTS } from './achievements.js';
 import { REGION_KEYS } from './regions.js';
@@ -112,6 +113,7 @@ function achieve(a) {
   audio.deposit?.();
 }
 const traderBoat = new TraderBoat(scene);
+const giant = new DistantGiant(scene);
 const schoolV = new THREE.Vector3();
 player.dress(DIVER_TEX.cloth, DIVER_TEX.patina);
 const audio = new Audio();
@@ -283,7 +285,15 @@ const S = {
   stats: null,
   time: 0,
 };
-const needFood = () => ECO.needFood(S.pop, S.up.still || 0);
+// Сложность: длина дня, ночной расход еды, лишние пиявки
+const DIFF = {
+  easy: { name: 'Спокойная', day: 1.3, still: 1, leeches: -2 },
+  normal: { name: 'Обычная', day: 1, still: 0, leeches: 0 },
+  hard: { name: 'Суровая', day: 0.85, still: -1, leeches: 3 },
+};
+const diff = () => DIFF[S.diff] || DIFF.normal;
+const stillBonus = () => (S.up.still || 0) + diff().still;
+const needFood = () => ECO.needFood(S.pop, stillBonus());
 const needFuel = () => ECO.needFuel(S.cycle);
 const plural = ECO.plural;
 
@@ -431,7 +441,7 @@ function autoQuality(dt) {
 
 // ============ Настройки ============
 const SETTINGS_KEY = 'deepback-settings-v1';
-const settings = { volume: 0.7, voice: 1, music: 0.5, sens: 1, invert: false, quality: 'auto' };
+const settings = { volume: 0.7, voice: 1, music: 0.5, sens: 1, invert: false, quality: 'auto', diff: 'normal' };
 try { Object.assign(settings, JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}')); } catch (e) { /* без сохранения */ }
 function applySettings() {
   audio.setVolume(settings.volume);
@@ -501,6 +511,7 @@ function updateHud() {
 
 // ============ Ход игры ============
 function startRun(withIntro = false) {
+  S.diff = settings.diff || 'normal';
   S.cycle = 1;
   S.pop = ECO.START.pop;
   S.food = ECO.START.food;
@@ -517,7 +528,7 @@ function startRun(withIntro = false) {
 
 // ============ Сохранение ============
 const SAVE_KEY = 'deepback-save-v1';
-const SAVE_FIELDS = ['cycle', 'pop', 'food', 'fuel', 'lore', 'scrap', 'up', 'alive', 'arms', 'runSeed'];
+const SAVE_FIELDS = ['cycle', 'pop', 'food', 'fuel', 'lore', 'scrap', 'up', 'alive', 'arms', 'runSeed', 'diff'];
 function saveGame() {
   try {
     const data = {};
@@ -582,7 +593,7 @@ function startDay() {
   setRegion(regionFor(S.runSeed, S.cycle));
   applyUpgrades();
   S.quest = makeQuest(drng, S.alive, S.cycle);
-  S.T = ECO.dayLength(S.cycle, S.weather);
+  S.T = Math.round(ECO.dayLength(S.cycle, S.weather) * diff().day);
   ocean.amp = S.weather === 'storm' ? 2.4 : S.weather === 'calm' ? 0.45 : 1;
   const wa = drng() * Math.PI * 2;
   S.wind = S.weather === 'storm' ? { x: Math.cos(wa) * 3.2, z: Math.sin(wa) * 3.2 } : null;
@@ -594,7 +605,7 @@ function startDay() {
   schools.reset(3 + (S.region === 'reef' ? 3 : 0), mulberry32(S.runSeed + S.cycle * 577));
   if (traderComes(S.runSeed, S.cycle) && !coop.isGuest) traderBoat.arrive(S.runSeed, S.cycle);
   else traderBoat.leave();
-  city.generate(S.runSeed + S.cycle * 1013, S.cycle, S.lore, LORE.length, { keepsake: S.quest?.kind === 'keepsake', extraFood: R.extraFood, extraScrap: R.extraScrap, extraLeeches: R.extraLeeches });
+  city.generate(S.runSeed + S.cycle * 1013, S.cycle, S.lore, LORE.length, { keepsake: S.quest?.kind === 'keepsake', extraFood: R.extraFood, extraScrap: R.extraScrap, extraLeeches: Math.max(0, (R.extraLeeches || 0) + diff().leeches) });
   navGrid = NAV.buildGrid((x, z) => backU(x, z) >= 0.97 || city.overlaps(x, z, 0.8));
   S.navTimer = 0;
   S.navPath = null;
@@ -744,7 +755,7 @@ function endDay(outcome) {
   } else {
     lines.push('Шлюз закрылся за твоей спиной. Мать уходит на глубину.');
   }
-  const night = ECO.resolveNight({ pop: S.pop, food: S.food, fuel: S.fuel, cycle: S.cycle, still: S.up.still || 0 });
+  const night = ECO.resolveNight({ pop: S.pop, food: S.food, fuel: S.fuel, cycle: S.cycle, still: stillBonus() });
   const { nf, nu, eatF, burn, hunger, cold, deaths } = night;
   const named = killResidents(deaths);
   if (outcome === 'safe' && S.weather === 'storm') achieve(ach.unlock('storm'));
@@ -880,17 +891,75 @@ function showEndingChoice() {
       onClick: () => {
         clearSave();
         achieve(ach.unlock('ending'));
-        showModal({
-          title: `Финал: ${e.title}`,
-          body: e.text + `\n\nДней прожито: ${S.cycle}. Выжило жителей: ${S.pop}.`,
-          buttons: [{ label: 'Сыграть снова', onClick: startRun }],
-        });
-        voice.play(`ending-${e.key}`);
+        playOutro(e);
       },
     })),
   });
 }
 
+
+// Финальная заставка: камера поднимается над Матерью на рассвете,
+// по абзацам идёт текст выбранного финала, в конце — титр и итоги
+const outro = { t: 0, ending: null, parts: [], idx: -1 };
+const OUTRO_PART = 7;
+function playOutro(e) {
+  S.mode = 'outro';
+  S.paused = false;
+  $('modal').classList.add('hidden');
+  $('hud').classList.add('hidden');
+  $('arkhud').classList.add('hidden');
+  if (post.scene !== scene) {
+    scene.add(player.mesh);
+    post.setScene(scene);
+  }
+  document.exitPointerLock?.();
+  outro.t = 0;
+  outro.idx = -1;
+  outro.ending = e;
+  outro.parts = e.text.split('\n\n');
+  ocean.amp = 0.6;
+  $('cine').classList.remove('hidden', 'titlecard');
+  $('cine-labels').innerHTML = '';
+  $('cine-title').querySelector('p').textContent = `Финал: ${e.title}`;
+  voice.play(`ending-${e.key}`);
+}
+function updateOutro(dt) {
+  outro.t += dt;
+  const total = outro.parts.length * OUTRO_PART + 6;
+  const k = Math.min(1, outro.t / total);
+  // облёт: от шлюза вверх и в сторону хвоста, Мать целиком в кадре
+  const a = 0.6 + k * 1.6;
+  const r = 75 + k * 130;
+  camera.position.set(Math.sin(a) * r, 34 + k * 55, Math.cos(a) * r);
+  camera.lookAt(0, 8 - k * 4, -10 * k);
+  const p = 0.12 - k * 0.1; // рассвет
+  ocean.update(S.time, ECO.WATER_START, 0, 0);
+  applyTime(Math.max(0.02, p));
+  updateAmbient(dt, Math.max(0.02, p));
+  cameraEnv(Math.max(0.02, p));
+  const idx = Math.floor(outro.t / OUTRO_PART);
+  if (idx !== outro.idx) {
+    outro.idx = idx;
+    const sub = $('cine-sub');
+    sub.classList.remove('show');
+    void sub.offsetWidth;
+    sub.textContent = outro.parts[idx] || '';
+    sub.style.animationDuration = `${OUTRO_PART}s`;
+    if (outro.parts[idx]) sub.classList.add('show');
+    $('cine').classList.toggle('titlecard', idx >= outro.parts.length);
+  }
+  if (outro.t >= total || pressed.has('Space') || pressed.has('Escape')) {
+    $('cine').classList.add('hidden');
+    $('cine').classList.remove('titlecard');
+    S.mode = 'night';
+    const e = outro.ending;
+    showModal({
+      title: `Финал: ${e.title}`,
+      body: e.text + `\n\nДней прожито: ${S.cycle}. Выжило жителей: ${S.pop}. Достижений: ${ach.count}/${ACHIEVEMENTS.length}.`,
+      buttons: [{ label: 'Сыграть снова', onClick: startRun }],
+    });
+  }
+}
 
 function showJournal() {
   const body = document.createElement('div');
@@ -1063,6 +1132,13 @@ function updateGame(dt) {
   }
 
   schools.update(dt, S.time, ocean.level, ocean.amp);
+  if (giant.update(dt, ocean.level, S.mode === 'day' && S.weather !== 'fog')) {
+    audio.moan(0.35);
+    if (!S.sawGiant) {
+      S.sawGiant = true;
+      toast('Вдали всплыл ещё один гигант. Мать отвечает ему долгим гулом — она не одна.', 'relic');
+    }
+  }
   updateNavigator(dt);
   updateHarpoon(dt);
   updateHolding();
@@ -1373,6 +1449,11 @@ function updateNavigator(dt) {
     toast(`Навигатор: ${NAV_MODES[S.navMode][1]}`);
   }
   if (pressed.has('KeyM')) $('hud').classList.toggle('nomap');
+  // H — фото-режим: спрятать весь интерфейс
+  if (pressed.has('KeyH')) {
+    document.body.classList.toggle('photo');
+    toast(document.body.classList.contains('photo') ? 'Фото-режим: интерфейс скрыт (H — вернуть).' : 'Интерфейс снова виден.');
+  }
   S.navTimer -= dt;
   if (S.navTimer <= 0) {
     S.navTimer = 0.4;
@@ -2375,6 +2456,18 @@ $('prologue-btn').addEventListener('click', () => {
   });
 });
 $('skip').addEventListener('click', () => endIntro());
+// выбор сложности в меню
+function renderDiff() {
+  for (const b of document.querySelectorAll('#diff button')) b.classList.toggle('on', b.dataset.diff === (settings.diff || 'normal'));
+}
+for (const b of document.querySelectorAll('#diff button')) {
+  b.addEventListener('click', () => {
+    settings.diff = b.dataset.diff;
+    try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch { /* приватное окно */ }
+    renderDiff();
+  });
+}
+renderDiff();
 
 // мини-карта и её легенда
 const minimap = new Minimap($('minimap'));
@@ -2530,7 +2623,7 @@ $('coop-btn').addEventListener('click', () => {
 });
 
 // для фона меню и для автотестов
-window.__deepback = { coop, schools, ach, traderBoat, openTrader: () => openTrader(), strikeBolt: () => strikeBolt(), get bolt() { return bolt; }, showArmsHint, planShot: (s) => planShot(s), cameraRoomy: (c, r) => cameraRoomy(c, r), ark, enterArk, killLeech, lineClear: (...a) => lineClear(...a), introPoint: (s) => introPoint(s), S, sky, envScene, whale, ambient, scene, post, voice, intro, startIntro, endIntro, player, city, ocean, deeplings, rain, navDots, startRun, startDay, endDay, keys, pressed, setYaw: (v) => (yaw = v) };
+window.__deepback = { coop, schools, ach, giant, playOutro: (e) => playOutro(e), get outro() { return outro; }, traderBoat, openTrader: () => openTrader(), strikeBolt: () => strikeBolt(), get bolt() { return bolt; }, showArmsHint, planShot: (s) => planShot(s), cameraRoomy: (c, r) => cameraRoomy(c, r), ark, enterArk, killLeech, lineClear: (...a) => lineClear(...a), introPoint: (s) => introPoint(s), S, sky, envScene, whale, ambient, scene, post, voice, intro, startIntro, endIntro, player, city, ocean, deeplings, rain, navDots, startRun, startDay, endDay, keys, pressed, setYaw: (v) => (yaw = v) };
 
 // ============ Цикл ============
 const clock = new THREE.Clock();
@@ -2549,8 +2642,11 @@ function frame() {
     camera.position.lerp(new THREE.Vector3(Math.sin(yaw) * 140, 55, Math.cos(yaw) * 140), 1);
     camera.lookAt(0, 6, 0);
     updateAmbient(dt, 0.3);
+    giant.update(dt, 4, true);
   } else if (S.mode === 'intro') {
     updateIntro(dt);
+  } else if (S.mode === 'outro') {
+    updateOutro(dt);
   } else if ((S.mode === 'day' || S.mode === 'closing') && !S.paused) {
     if (pressed.has('KeyJ')) showJournal();
     else updateGame(dt);
