@@ -123,6 +123,8 @@ export class Deepling {
     this.angle = angle;
     this.cool = 0;
     this.flee = 0;
+    this.windup = 0; // замах перед броском: пасть распахнута, приманка краснеет
+    this.lunge = 0; // сам бросок: короткий и быстрый, от него можно увернуться
     this.hunting = false;
     this.phase = Math.random() * 6;
     this.setActive(false);
@@ -137,6 +139,8 @@ export class Deepling {
       this.vel.set(0, 0, 0);
       this.cool = 0;
       this.flee = 0;
+      this.windup = 0;
+      this.lunge = 0;
       this.segPos.forEach((p, i) => p.copy(this.pos).add(new THREE.Vector3(Math.sin(this.angle), 0, Math.cos(this.angle)).multiplyScalar(-i * SPACING)));
     }
   }
@@ -146,6 +150,7 @@ export class Deepling {
     if (!this.active) return null;
     this.cool -= dt;
     this.flee -= dt;
+    this.lunge = Math.max(0, this.lunge - dt);
     this.phase += dt * 3;
     const surface = ocean.level;
     const toP = new THREE.Vector3(player.pos.x - this.pos.x, player.pos.y + 1 - this.pos.y, player.pos.z - this.pos.z);
@@ -161,6 +166,17 @@ export class Deepling {
     } else if (this.hunting) {
       target.set(player.pos.x, player.pos.y + 1, player.pos.z);
       speed = 4.6 + speedBoost;
+      // вблизи — не таран вслепую, а замах и бросок
+      if (!this.windup && !this.lunge && this.cool <= 0 && dP < 6 && player.swimming) this.windup = 0.6;
+      if (this.windup > 0) {
+        speed = 1.2; // зависает, набирая силу
+        this.windup -= dt;
+        if (this.windup <= 0) {
+          this.windup = 0;
+          this.lunge = 0.4;
+          this.vel.copy(toP).multiplyScalar(15 / (dP || 1));
+        }
+      }
     } else {
       this.angle += dt * 0.045;
       target.set(Math.sin(this.angle) * (WHALE.a + 14), surface - 7, Math.cos(this.angle) * (WHALE.b + 16));
@@ -169,7 +185,7 @@ export class Deepling {
     const dir = target.sub(this.pos);
     const dl = dir.length();
     if (dl > 0.01) dir.multiplyScalar(1 / dl);
-    this.vel.lerp(dir.multiplyScalar(speed), Math.min(1, dt * 1.8));
+    if (!this.lunge) this.vel.lerp(dir.multiplyScalar(speed), Math.min(1, dt * 1.8));
     this.pos.addScaledVector(this.vel, dt);
 
     // остаётся под водой и не залезает в кита
@@ -194,15 +210,25 @@ export class Deepling {
       if (next.distanceToSquared(m.position) > 1e-4) m.lookAt(next);
       m.rotateY(Math.PI);
     }
-    this.light.intensity = this.hunting ? 30 + Math.sin(this.phase * 4) * 10 : 14;
-    // пасть приоткрыта всегда, на охоте — распахнута
-    const open = this.hunting ? 0.55 + Math.sin(this.phase * 2.5) * 0.15 : 0.12 + Math.sin(this.phase * 0.7) * 0.06;
+    const warn = this.windup > 0 || this.lunge > 0;
+    this.light.intensity = warn ? 55 + Math.sin(this.phase * 12) * 20 : this.hunting ? 30 + Math.sin(this.phase * 4) * 10 : 14;
+    if (!this.lureColor) this.lureColor = this.light.color.clone();
+    if (warn) this.light.color.setRGB(1, 0.25, 0.15);
+    else this.light.color.copy(this.lureColor);
+    // пасть приоткрыта всегда, на охоте — распахнута, перед броском — до отказа
+    const open = warn ? 1.0 : this.hunting ? 0.55 + Math.sin(this.phase * 2.5) * 0.15 : 0.12 + Math.sin(this.phase * 0.7) * 0.06;
     this.jaw.rotation.x += (open - this.jaw.rotation.x) * Math.min(1, dt * 4);
 
-    if (dP < 1.8 && this.cool <= 0 && player.swimming) {
+    if (this.lunge > 0 && dP < 2.4 && player.swimming) {
+      this.lunge = 0;
       this.cool = 3;
       this.flee = 3.5;
       return 'bite';
+    }
+    if (this.lunge > 0 && this.lunge <= dt) {
+      // промахнулся: проскочил мимо и разворачивается
+      this.cool = 1.6;
+      return 'miss';
     }
     return null;
   }
@@ -210,5 +236,7 @@ export class Deepling {
   scare() {
     this.flee = 8;
     this.cool = 2;
+    this.windup = 0;
+    this.lunge = 0;
   }
 }

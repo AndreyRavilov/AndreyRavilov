@@ -2576,6 +2576,7 @@ function updateCombatUi(dt) {
     el.style.top = `${(-floatV.y * 0.5 + 0.5) * innerHeight}px`;
     el.firstChild.style.width = `${(ref.hp / ref.maxHp) * 100}%`;
     el.classList.toggle('flash', (ref.hitFlash || 0) > 0);
+    el.classList.toggle('warn', (ref.windup || 0) > 0 || (ref.lunge || 0) > 0);
     ref.hitFlash = Math.max(0, (ref.hitFlash || 0) - dt);
   };
   if (S.mode === 'day' || S.mode === 'closing') {
@@ -2604,7 +2605,18 @@ function updateCombatUi(dt) {
 function updateDeeplings(dt) {
   for (const D of deeplings) {
     const r = D.update(dt, player, ocean, S.mode === 'closing', S.cycle * 0.15 - (S.up.fins || 0) * 0.2);
-    if (r === 'bite') {
+    // замах: низкий рык — пора уходить рывком (V) или бить первым
+    if (D.windup > 0 && !D.warned) {
+      D.warned = true;
+      audio.tone({ type: 'sawtooth', f0: 55, f1: 95, dur: 0.55, vol: 0.2, attack: 0.15, lp: 420 });
+      if (!S.lungeHinted) { S.lungeHinted = true; toast('Глубинник готовится к броску — рывок V уводит из-под зубов!', 'danger'); }
+    }
+    if (!D.windup) D.warned = false;
+    if (r === 'miss') floatNumber(D.pos.x, D.pos.y + 1.5, D.pos.z, 'мимо!', 'dodge');
+    if (r === 'bite' && S.dashInv > 0) {
+      floatNumber(player.pos.x, player.pos.y + 2.4, player.pos.z, 'уклон!', 'dodge');
+      D.flee = 1.5;
+    } else if (r === 'bite') {
       player.oxygen -= 0.12;
       hurtPlayer(COMBAT.BITE.deepling, 'deepling');
       const away = player.pos.clone().sub(D.pos).setY(0).normalize();

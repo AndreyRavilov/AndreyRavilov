@@ -97,6 +97,9 @@
   .ebar { position: absolute; width: 56px; height: 8px; transform: translate(-50%, -100%); background: rgba(0,0,0,.55); border: 1px solid rgba(255,255,255,.35); border-radius: 3px; }
   .ebar i { display: block; height: 100%; background: #ff4f6a; border-radius: 2px; transition: width .15s; }
   .ebar.flash { border-color: #fff; box-shadow: 0 0 8px #fff; }
+  .ebar.warn { border-color: #ff6a3a; animation: ewarn .18s infinite alternate; }
+  .ebar.warn::after { content: '!'; position: absolute; left: 50%; top: -20px; transform: translateX(-50%); color: #ff6a3a; font: 700 16px sans-serif; text-shadow: 0 0 6px #000; }
+  @keyframes ewarn { from { box-shadow: 0 0 2px #ff6a3a; } to { box-shadow: 0 0 12px #ff6a3a; } }
   .dmg { position: absolute; transform: translate(-50%, -100%); font-weight: 800; font-size: 18px; color: #ffe08a; text-shadow: 0 2px 4px #000, 0 0 2px #000; }
   .dmg.me { color: #ff6b6b; }
   .dmg.dodge { color: #8ff0ff; font-size: 15px; }

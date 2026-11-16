@@ -277,9 +277,45 @@ test('глубинник кусает вплотную, потом отплыв�
   p.reset(new THREE.Vector3(d.pos.x, d.pos.y - 1, d.pos.z + 0.5));
   p.swimming = true;
   p.headUnder = true;
-  assert.equal(d.update(1 / 60, p, world.ocean, false, 0), 'bite');
+  // сначала замах: укуса нет, пасть распахивается
+  assert.equal(d.update(1 / 60, p, world.ocean, false, 0), null);
+  assert.ok(d.windup > 0, 'глубинник замахивается');
+  let r = null;
+  for (let i = 0; i < 80 && r !== 'bite'; i++) {
+    p.pos.set(d.pos.x, d.pos.y - 1, d.pos.z + 0.5);
+    r = d.update(1 / 60, p, world.ocean, false, 0);
+  }
+  assert.equal(r, 'bite');
   assert.equal(d.update(1 / 60, p, world.ocean, false, 0), null);
   assert.ok(d.flee > 0);
+});
+
+test('от броска глубинника можно уйти: если ныряльщик отплыл, бросок мимо', () => {
+  const world = makeWorld(makeCity(1), 6);
+  const scene = new THREE.Scene();
+  const d = new Deepling(scene, 0.5);
+  d.setActive(true, 6);
+  const p = new Player(scene);
+  p.reset(new THREE.Vector3(d.pos.x, d.pos.y - 1, d.pos.z + 3));
+  p.swimming = true;
+  p.headUnder = true;
+  d.update(1 / 60, p, world.ocean, false, 0);
+  assert.ok(d.windup > 0);
+  // ныряльщик ушёл рывком далеко в сторону
+  p.pos.x += 30;
+  const seen = [];
+  for (let i = 0; i < 80; i++) seen.push(d.update(1 / 60, p, world.ocean, false, 0));
+  assert.ok(!seen.includes('bite'));
+  assert.ok(seen.includes('miss'));
+});
+
+test('удар во время замаха сбивает бросок', () => {
+  const d = new Deepling(new THREE.Scene(), 1);
+  d.setActive(true, 4);
+  d.windup = 0.4;
+  d.scare();
+  assert.equal(d.windup, 0);
+  assert.equal(d.lunge, 0);
 });
 
 test('гарпун отпугивает глубинника', () => {
