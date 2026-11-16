@@ -76,7 +76,7 @@ void main() {
   float band = detail(vec2(vWorld.x * 0.0012, vWorld.z * 0.006) + vec2(-uTime * 0.001, 0.0));
   base *= 0.82 + 0.3 * big;
   base = mix(base, uShallow * 0.9, smoothstep(0.62, 0.8, band) * 0.18);
-  base = mix(base, uShallow * 1.35 + vec3(0.02, 0.06, 0.05), shallow * 0.7);
+  base = mix(base, uShallow * 1.3, shallow * 0.7);
   vec3 col = mix(base, uSky, clamp(fres * 0.9, 0.0, 1.0));
 
   // солнце
@@ -103,7 +103,9 @@ void main() {
   float streak = smoothstep(0.8, 0.86, sn) * (1.0 - smoothstep(0.86, 0.92, sn)); // тонкая нить, а не пятно
   crest += streak * smoothstep(0.55, 0.75, h2) * 0.12;
   float foam = clamp(shore * smoothstep(0.30, 0.65, fn + shore * 0.25) + crest * fn, 0.0, 1.0);
-  col = mix(col, vec3(0.90, 0.95, 0.97), foam * 0.9);
+  // пена освещена как всё остальное: ночью она серо-синяя, а не белая
+  float lit = 0.18 + 0.82 * clamp(dot(uSunColor, vec3(0.3, 0.5, 0.2)) * 1.2, 0.0, 1.0);
+  col = mix(col, vec3(0.90, 0.95, 0.97) * lit + uSky * 0.15, foam * 0.9);
 
   // светящееся море: гребни и пена горят голубым, по ряби — искры планктона
   if (uGlow > 0.001) {

@@ -24,7 +24,7 @@ const M = {
   rust: new THREE.MeshStandardMaterial({ color: 0x7a4a33, roughness: 0.9, metalness: 0.3 }),
   dark: new THREE.MeshStandardMaterial({ color: 0x1a1d20, roughness: 0.9 }),
   rope: new THREE.MeshStandardMaterial({ color: 0x8a7a5a, roughness: 1 }),
-  bone: new THREE.MeshStandardMaterial({ color: 0xcfc1a2, roughness: 0.75 }), // старая слоновая кость
+  bone: new THREE.MeshStandardMaterial({ color: 0xaeaa9c, roughness: 0.85 }), // выбеленная солью кость: серая, не телесная
   window: new THREE.MeshStandardMaterial({ color: 0x332211, emissive: 0xffb45a, emissiveIntensity: 0.3 }),
   lamp: new THREE.MeshStandardMaterial({ color: 0xffe2a8, emissive: 0xffb860, emissiveIntensity: 1.5 }),
   hatch: new THREE.MeshBasicMaterial({ color: 0x58f0d8, transparent: true, opacity: 0.55, side: THREE.DoubleSide }),

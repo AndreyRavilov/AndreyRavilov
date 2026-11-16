@@ -218,11 +218,13 @@ function applyTime(p) {
   // своё море: вода, туман и небо смещаются к его цветам (ночью — меньше)
   const RG = S.mode === 'intro' || S.mode === 'menu' ? null : REGIONS[S.region || 'open'];
   if (RG && RG.deep) {
-    const k = 0.65 * (1 - p * 0.5);
+    // к ночи подкраска моря гаснет: цвета региона темнеют вместе с палитрой суток
+    const day = Math.pow(Math.max(0, 1 - p), 1.5);
+    const k = 0.65 * day;
     ocean.mat.uniforms.uDeep.value.lerp(regionC.set(RG.deep), k);
     ocean.mat.uniforms.uShallow.value.lerp(regionC.set(RG.shallow), k);
-    fogDay.lerp(regionC.set(RG.fog), 0.45 * (1 - p * 0.6));
-    skyMat.uniforms.horizon.value.lerp(regionC.set(RG.sky), 0.35 * (1 - p * 0.6));
+    fogDay.lerp(regionC.set(RG.fog), 0.45 * day);
+    skyMat.uniforms.horizon.value.lerp(regionC.set(RG.sky), 0.35 * day);
   }
   ocean.mat.uniforms.uGlow.value = RG && RG.glow ? Math.max(0, Math.min(1, (p - 0.35) / 0.4)) : 0;
   sunDirection(p, sunDir);
@@ -242,7 +244,7 @@ function applyTime(p) {
   hemi.intensity = THREE.MathUtils.lerp(a.hemi, b.hemi, t);
   starMat.opacity = Math.max(0, (p - 0.6) / 0.4);
   hemi.intensity *= 0.55;
-  MATERIALS.window.emissiveIntensity = 0.3 + p * 2.2;
+  MATERIALS.window.emissiveIntensity = 0.3 + p * 1.3;
   MATERIALS.lamp.emissiveIntensity = 1 + p * 3;
   MATERIALS.pool.opacity = Math.max(0, Math.min(1, (p - 0.45) / 0.3)) * 0.22;
 }
