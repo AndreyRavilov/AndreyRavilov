@@ -25,6 +25,8 @@ import { createCoop, RemoteDiver } from './coop.js';
 import { REGIONS, regionFor, buildRegion, animateRegion } from './regions.js';
 import { Schools } from './schools.js';
 import { TraderBoat, OFFERS, trade, traderComes } from './trader.js';
+import { Achievements, ACHIEVEMENTS } from './achievements.js';
+import { REGION_KEYS } from './regions.js';
 
 // ============ Рендер и сцена ============
 const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: false, powerPreference: 'high-performance' });
@@ -100,6 +102,15 @@ for (const mtl of MATERIALS.roofs || []) addCaustics(mtl);
 const city = new City(scene);
 const player = new Player(scene);
 const schools = new Schools(scene);
+let achStore = null;
+try { achStore = window.localStorage; } catch { /* нет хранилища */ }
+const ach = new Achievements(achStore);
+// всплывающее достижение
+function achieve(a) {
+  if (!a) return;
+  toast(`${a.icon} Достижение: ${a.title} — ${a.desc}`, 'achv');
+  audio.deposit?.();
+}
 const traderBoat = new TraderBoat(scene);
 const schoolV = new THREE.Vector3();
 player.dress(DIVER_TEX.cloth, DIVER_TEX.patina);
@@ -606,6 +617,8 @@ function startDay() {
   const W = WEATHER[S.weather];
   if (S.cycle > 1) toast(`${W.icon} ${W.name}. ${W.note}`, S.weather === 'storm' ? 'danger' : '');
   if (S.region !== 'open') toast(`🧭 ${R.name}. ${R.note}`, 'relic');
+  achieve(ach.seaVisited(S.region, REGION_KEYS.length));
+  if (S.cycle >= 10) achieve(ach.unlock('day10'));
   if (traderBoat.active) toast('⛵ К краю спины причалила лодка торговца — у него есть что обменять.', 'quest');
   if (S.quest) toast(S.quest.text, 'quest');
   lockPointer();
@@ -646,6 +659,8 @@ function deposit() {
     for (let k = 0; k < n && S.lore + k < LORE.length; k++) relics.push(S.lore + k);
     coop.act({ k: 'dep', it: player.carried.slice() });
   } else relics = countDeposit(player.carried);
+  if (player.weight >= player.capacity) achieve(ach.unlock('full-pack'));
+  if (relics.length) achieve(ach.unlock('first-relic'));
   player.carried = [];
   player.refreshPack();
   audio.deposit();
@@ -732,6 +747,8 @@ function endDay(outcome) {
   const night = ECO.resolveNight({ pop: S.pop, food: S.food, fuel: S.fuel, cycle: S.cycle, still: S.up.still || 0 });
   const { nf, nu, eatF, burn, hunger, cold, deaths } = night;
   const named = killResidents(deaths);
+  if (outcome === 'safe' && S.weather === 'storm') achieve(ach.unlock('storm'));
+  if (!deaths && outcome === 'safe') achieve(ach.unlock('nodeaths'));
   S.pop = night.pop;
   S.food = night.food;
   S.fuel = night.fuel;
@@ -862,6 +879,7 @@ function showEndingChoice() {
       sub: e.choice,
       onClick: () => {
         clearSave();
+        achieve(ach.unlock('ending'));
         showModal({
           title: `Финал: ${e.title}`,
           body: e.text + `\n\nДней прожито: ${S.cycle}. Выжило жителей: ${S.pop}.`,
@@ -888,6 +906,18 @@ function showJournal() {
     }
   }
   S.paused = true;
+  const h = document.createElement('h3');
+  h.textContent = `Достижения · ${ach.count}/${ACHIEVEMENTS.length}`;
+  body.appendChild(h);
+  const ul = document.createElement('ul');
+  ul.className = 'achv-list';
+  for (const a of ACHIEVEMENTS) {
+    const li = document.createElement('li');
+    li.className = ach.has(a.id) ? 'got' : '';
+    li.textContent = `${ach.has(a.id) ? a.icon : '·'} ${a.title} — ${a.desc}`;
+    ul.appendChild(li);
+  }
+  body.appendChild(ul);
   showModal({ title: 'Журнал Ныряльщика', body, buttons: [{ label: 'Закрыть', onClick: () => { S.paused = false; lockPointer(); } }] });
 }
 
@@ -937,6 +967,7 @@ function openTrader() {
         S.fuel = t2.stock.fuel;
         S.scrap = t2.stock.scrap;
         S.arms = { ...S.arms, bombs: Math.min(9, t2.stock.bombs) };
+        achieve(ach.unlock('trader'));
         audio.deposit();
         render();
       };
@@ -1014,6 +1045,7 @@ function updateGame(dt) {
       player.refreshPack();
       audio.pickup('food');
       for (let i = 0; i < 10; i++) ambient.bubbles?.spawn?.(school.center.x + (Math.random() - 0.5) * 2, school.center.y, school.center.z + (Math.random() - 0.5) * 2, 0, 1 + Math.random(), 0, 1.5, 0.15);
+      achieve(ach.unlock('fisher'));
       if (!S.caughtFish) { S.caughtFish = true; toast('Рыба из косяка! Косяк шарахнулся — он даёт ещё пару рыб, потом уплывёт.', 'ok'); }
     }
   }
@@ -2088,7 +2120,10 @@ function updateFlare(dt) {
 
 function killLeech(L, remote = false) {
   if (L.dead) return;
-  if (!remote) coop.act({ k: 'kill', i: city.leeches.indexOf(L) });
+  if (!remote) {
+    coop.act({ k: 'kill', i: city.leeches.indexOf(L) });
+    achieve(ach.leechKilled());
+  }
   L.dead = true;
   city.group.remove(L.mesh);
   for (let i = 0; i < 14; i++) ambient.spray.spawn(L.x, L.mesh.position.y + 0.3, L.z, (Math.random() - 0.5) * 3, 1 + Math.random() * 2, (Math.random() - 0.5) * 3, 0.8, 0.3);
@@ -2495,7 +2530,7 @@ $('coop-btn').addEventListener('click', () => {
 });
 
 // для фона меню и для автотестов
-window.__deepback = { coop, schools, traderBoat, openTrader: () => openTrader(), strikeBolt: () => strikeBolt(), get bolt() { return bolt; }, showArmsHint, planShot: (s) => planShot(s), cameraRoomy: (c, r) => cameraRoomy(c, r), ark, enterArk, killLeech, lineClear: (...a) => lineClear(...a), introPoint: (s) => introPoint(s), S, sky, envScene, whale, ambient, scene, post, voice, intro, startIntro, endIntro, player, city, ocean, deeplings, rain, navDots, startRun, startDay, endDay, keys, pressed, setYaw: (v) => (yaw = v) };
+window.__deepback = { coop, schools, ach, traderBoat, openTrader: () => openTrader(), strikeBolt: () => strikeBolt(), get bolt() { return bolt; }, showArmsHint, planShot: (s) => planShot(s), cameraRoomy: (c, r) => cameraRoomy(c, r), ark, enterArk, killLeech, lineClear: (...a) => lineClear(...a), introPoint: (s) => introPoint(s), S, sky, envScene, whale, ambient, scene, post, voice, intro, startIntro, endIntro, player, city, ocean, deeplings, rain, navDots, startRun, startDay, endDay, keys, pressed, setYaw: (v) => (yaw = v) };
 
 // ============ Цикл ============
 const clock = new THREE.Clock();

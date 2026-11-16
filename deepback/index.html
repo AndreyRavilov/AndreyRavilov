@@ -71,6 +71,9 @@
   #quest { flex-basis: 100%; text-align: right; font-size: 13px; color: #ffc9df; }
   #quest.done { color: var(--accent); }
   .toast.relic { border-color: var(--relic); color: #d8fdff; }
+  .toast.achv { border-color: #e8c547; color: #fff4c8; background: linear-gradient(90deg, rgba(60,48,12,.92), rgba(8,20,26,.88)); }
+  .achv-list { list-style: none; padding: 0; margin: 6px 0 0; display: grid; gap: 4px; font-size: 14px; color: var(--muted); }
+  .achv-list li.got { color: #fff0b8; }
   #hud.alarm::after { content: ''; position: absolute; inset: 0; box-shadow: inset 0 0 120px rgba(255, 40, 40, .45); animation: pulse 1s infinite; }
   @keyframes pulse { 50% { opacity: .2; } }
   #under { position: fixed; inset: 0; pointer-events: none; background: radial-gradient(ellipse at center, rgba(20,90,110,.05), rgba(0,20,30,.55)); opacity: 0; transition: opacity .3s; }
