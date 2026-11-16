@@ -634,6 +634,7 @@ function startDay() {
   S.mode = 'day';
   S.paused = false;
   $('hud').classList.remove('hidden');
+  tutorialStart();
   toast(`День ${S.cycle}. Мать всплыла. У тебя ${Math.round(S.T / 60 * 10) / 10} мин.`);
   if (S.cycle > 1 && S.up.trap && !coop.isGuest) {
     S.food += S.up.trap;
@@ -694,6 +695,7 @@ function deposit() {
   if (relics.length) achieve(ach.unlock('first-relic'));
   player.carried = [];
   player.refreshPack();
+  tutorialMark('deposit');
   audio.deposit();
   toast('Груз сдан в Ковчег.', 'ok');
   checkQuest();
@@ -745,6 +747,7 @@ function killResidents(n) {
 
 function endDay(outcome) {
   if (S.mode === 'night') return;
+  tutorialFinish();
   traderBoat.leave();
   castaway.leave();
   if (coop.isGuest) {
@@ -1165,6 +1168,7 @@ function updateGame(dt) {
 
   schools.update(dt, S.time, ocean.level, ocean.amp);
   updateWakes(dt);
+  tutorialTick();
   updateThreat();
   if (giant.update(dt, ocean.level, S.mode === 'day' && S.weather !== 'fog')) {
     audio.moan(0.35);
@@ -1399,6 +1403,53 @@ function updateThreat() {
   const a2 = Math.atan2(threatV.y, threatV.x);
   el.style.transform = `translate(${Math.cos(a2) * rx}px, ${-Math.sin(a2) * ry}px)`;
   el.firstChild.style.transform = `rotate(${Math.PI / 2 - a2}rad) scale(${1.4 - bd / 50})`;
+}
+
+// Подсказки первого дня: чек-лист, отмечается по ходу игры
+const TUTORIAL = [
+  ['pick', 'Подбери рыбу или бочку ворвани — <b>E</b>'],
+  ['hatch', 'Принеси груз к шлюзу Ковчега — светящееся кольцо, пунктир ведёт туда'],
+  ['deposit', 'Сдай груз — <b>E</b> у шлюза'],
+  ['more', 'Собери на ночь: еду и ворвань (справа вверху — сколько нужно)'],
+  ['shelter', 'До последнего гудка укройся в Ковчеге — <b>R</b> у шлюза'],
+];
+const tut = { on: false, done: new Set() };
+function tutorialStart() {
+  tut.on = S.cycle === 1 && !settings.tutorialDone && !coop.isGuest;
+  tut.done.clear();
+  $('tutorial').classList.toggle('hidden', !tut.on);
+  renderTutorial();
+}
+function tutorialMark(id) {
+  if (!tut.on || tut.done.has(id)) return;
+  tut.done.add(id);
+  renderTutorial();
+}
+function renderTutorial() {
+  if (!tut.on) return;
+  const ol = $('tutorial').querySelector('ol');
+  ol.innerHTML = '';
+  let nowSet = false;
+  for (const [id, text] of TUTORIAL) {
+    const li = document.createElement('li');
+    li.innerHTML = text;
+    if (tut.done.has(id)) li.className = 'done';
+    else if (!nowSet) { li.className = 'now'; nowSet = true; }
+    ol.appendChild(li);
+  }
+}
+function tutorialFinish() {
+  if (!tut.on) return;
+  tut.on = false;
+  $('tutorial').classList.add('hidden');
+  settings.tutorialDone = true;
+  try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch { /* приватное окно */ }
+}
+function tutorialTick() {
+  if (!tut.on) return;
+  if (player.carried.length) tutorialMark('pick');
+  if (inHatch() && player.carried.length) tutorialMark('hatch');
+  if (S.food >= needFood() && S.fuel >= needFuel()) tutorialMark('more');
 }
 
 // Круги на воде от ныряльщика: бредёт по мелководью или плывёт у поверхности
@@ -2451,6 +2502,10 @@ function updateCamera(dt) {
   cy = camTarget.y + (cy - camTarget.y) * camFree;
   const bh = backHeight(px, pz);
   if (cy < bh + 0.6) cy = bh + 0.6;
+  // камера не режет поверхность воды: голова над водой — камера над волной, под водой — под ней
+  const surf = ocean.surfaceAt(px, pz);
+  if (player.headUnder) cy = Math.min(cy, surf - 0.6);
+  else cy = Math.max(cy, surf + 0.7);
   camera.position.set(px, cy, pz);
   camera.lookAt(camTarget);
   cameraEnv(Math.min(1, S.t / S.T));

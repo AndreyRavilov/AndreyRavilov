@@ -81,6 +81,12 @@
   #threat i { position: absolute; left: -22px; top: -22px; width: 44px; height: 44px; background: radial-gradient(circle at 50% 30%, rgba(255,70,60,.95) 0 30%, rgba(255,70,60,0) 70%); clip-path: polygon(50% 0, 100% 70%, 50% 50%, 0 70%); animation: threatPulse .6s ease-in-out infinite alternate; }
   @keyframes threatPulse { from { opacity: .45; } to { opacity: 1; } }
   @media (prefers-reduced-motion: reduce) { #threat i { animation: none; } }
+  #tutorial { position: fixed; left: 16px; top: 120px; width: 250px; padding: 12px 14px; border-radius: 12px; background: rgba(6,16,22,.72); border: 1px solid var(--line); font-size: 13px; color: var(--muted); z-index: 3; pointer-events: none; }
+  #tutorial b { color: var(--ink); letter-spacing: .06em; font-size: 12px; text-transform: uppercase; }
+  #tutorial ol { margin: 8px 0 0; padding-left: 18px; display: grid; gap: 5px; }
+  #tutorial li.done { color: var(--accent); text-decoration: line-through; text-decoration-color: rgba(88,240,216,.5); }
+  #tutorial li.now { color: var(--ink); font-weight: 700; }
+  body.photo #tutorial { opacity: 0; }
   .toast.achv { border-color: #e8c547; color: #fff4c8; background: linear-gradient(90deg, rgba(60,48,12,.92), rgba(8,20,26,.88)); }
   .achv-list { list-style: none; padding: 0; margin: 6px 0 0; display: grid; gap: 4px; font-size: 14px; color: var(--muted); }
   .achv-list li.got { color: #fff0b8; }
@@ -243,6 +249,7 @@
 
 <div id="net-labels"></div>
 <div id="threat" class="hidden"><i></i></div>
+<aside id="tutorial" class="hidden"><b>Первый день</b><ol></ol></aside>
 <div id="arkhud" class="hidden">
   <div class="panel" id="ark-top"><div class="label" id="ark-title">Ковчег</div><div id="ark-stats"></div></div>
   <div id="ark-labels"></div>
