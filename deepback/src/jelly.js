@@ -77,7 +77,7 @@ export class Jellies {
         bell,
         tent,
         ang: rnd() * Math.PI * 2,
-        off: 3 + rnd() * 12,
+        off: 7 + rnd() * 10, // бок Матери под водой шире кромки — ближе медуза оказалась бы в нём
         depth: 1.2 + rnd() * 4,
         speed: (rnd() < 0.5 ? -1 : 1) * (0.004 + rnd() * 0.006),
         ph: rnd() * Math.PI * 2,
