@@ -670,3 +670,33 @@ test('косяк рыб: нырнуть к косяку и поймать рыб
   assert.equal(await game(page, () => window.__deepback.schools.list[0].left), 2);
   assert.deepEqual(page.errors, []);
 });
+
+test('лодка торговца: причаливает, обмен меняет запасы Ковчега', async (t) => {
+  const page = await openGame(env); t.after(() => page.context().close().catch(() => {}));
+  await startNewRun(page);
+  await game(page, async () => {
+    const d = window.__deepback;
+    const { traderComes } = await import('./src/trader.js');
+    for (let c = 2; c < 40; c++) if (traderComes(d.S.runSeed, c)) { d.S.cycle = c; d.S.pop = 12; d.S.food = 9; d.S.fuel = 5; d.startDay(); break; }
+  });
+  assert.ok(await game(page, () => window.__deepback.traderBoat.active));
+  // подходим к лодке
+  await waitFor(page, () => {
+    const d = window.__deepback;
+    const b = d.traderBoat.pos;
+    const L = Math.hypot(b.x, b.z);
+    const x = b.x - (3 * b.x) / L;
+    const z = b.z - (3 * b.z) / L;
+    d.player.pos.set(x, d.city.groundAt(x, z) + 0.1, z);
+    d.player.vel.set(0, 0, 0);
+    return /торговцем/.test(document.getElementById('prompt').textContent);
+  });
+  await page.keyboard.press('KeyE');
+  await waitFor(page, () => document.getElementById('modal-title').textContent === 'Лодка торговца');
+  const before = await game(page, () => ({ food: window.__deepback.S.food, scrap: window.__deepback.S.scrap }));
+  await page.locator('#modal-body .up', { hasText: '2 рыбы' }).locator('button').click();
+  const after = await game(page, () => ({ food: window.__deepback.S.food, scrap: window.__deepback.S.scrap }));
+  assert.deepEqual(after, { food: before.food - 2, scrap: before.scrap + 3 });
+  await clickModalButton(page, 'Отойти');
+  assert.deepEqual(page.errors, []);
+});

@@ -66,7 +66,7 @@ export class Schools {
   }
 
   // центр косяка: вокруг кита по эллипсу, под поверхностью
-  update(dt, t, level) {
+  update(dt, t, level, amp = 1) {
     for (const sc of this.list) {
       if (sc.gone) continue;
       sc.ang += sc.speed * dt * (sc.flee > 0 ? 6 : 1);
@@ -79,7 +79,8 @@ export class Schools {
           continue;
         }
       }
-      sc.center.set(Math.sin(sc.ang) * (WHALE.a + sc.off), level - sc.depth, Math.cos(sc.ang) * (WHALE.b + sc.off));
+      // ниже самой глубокой впадины волны, чтобы рыбы не выскакивали в шторм
+      sc.center.set(Math.sin(sc.ang) * (WHALE.a + sc.off), level - sc.depth - amp * 1.3, Math.cos(sc.ang) * (WHALE.b + sc.off));
       // рыбы кружат вокруг центра, плывут в сторону движения
       for (let k = 0; k < sc.fish.length; k++) {
         const f = sc.fish[k];
