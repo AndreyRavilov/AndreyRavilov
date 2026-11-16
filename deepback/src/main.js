@@ -1179,6 +1179,7 @@ function updateGame(dt) {
 
   schools.update(dt, S.time, ocean.level, ocean.amp);
   updateWakes(dt);
+  updateDash(dt);
   tutorialTick();
   updateCombatUi(dt);
   const tev = S.mode === 'day' ? thief.update(dt, player, (x, z) => { const b = backHeight(x, z); return isFinite(b) ? city.groundAt(x, z, b + 0.4) : ocean.surfaceAt(x, z); }, S.time) : null;
@@ -2491,9 +2492,42 @@ function hitEnemy(ref, kind, dmg) {
   }
 }
 
+// Рывок (V): короткий бросок туда, куда идёшь, — на долю секунды неуязвим
+function updateDash(dt) {
+  S.dashCd = Math.max(0, (S.dashCd || 0) - dt);
+  S.dashInv = Math.max(0, (S.dashInv || 0) - dt);
+  if (!pressed.has('KeyV') || S.dashCd > 0) return;
+  let ix = 0;
+  let iz = 0;
+  if (keys.has('KeyW') || keys.has('ArrowUp')) iz -= 1;
+  if (keys.has('KeyS') || keys.has('ArrowDown')) iz += 1;
+  if (keys.has('KeyA')) ix -= 1;
+  if (keys.has('KeyD')) ix += 1;
+  let dx;
+  let dz;
+  if (ix || iz) {
+    dx = Math.cos(yaw) * ix + Math.sin(yaw) * iz;
+    dz = -Math.sin(yaw) * ix + Math.cos(yaw) * iz;
+  } else {
+    // без направления — отскок назад от взгляда
+    dx = Math.sin(yaw);
+    dz = Math.cos(yaw);
+  }
+  const L = Math.hypot(dx, dz) || 1;
+  const power = player.swimming ? 9 : 15;
+  player.vel.x = (dx / L) * power;
+  player.vel.z = (dz / L) * power;
+  if (!player.swimming && player.onGround) { player.vel.y = 3; player.onGround = false; }
+  S.dashCd = 1.4;
+  S.dashInv = 0.4;
+  audio.tone({ type: 'triangle', f0: 220, f1: 520, dur: 0.18, vol: 0.08 });
+  for (let i = 0; i < 6; i++) ambient.spray.spawn(player.pos.x, player.pos.y + 0.3, player.pos.z, (Math.random() - 0.5) * 2, 0.5 + Math.random(), (Math.random() - 0.5) * 2, 0.5, 0.2);
+}
+
 // Ранение ныряльщика
 function hurtPlayer(amount, why) {
   if (S.mode !== 'day' && S.mode !== 'closing') return;
+  if (S.dashInv > 0) { floatNumber(player.pos.x, player.pos.y + 2.4, player.pos.z, 'уклон!', 'dodge'); return; }
   S.hp = Math.max(0, S.hp - amount);
   S.hurtT = 0;
   document.body.classList.remove('hurt');
@@ -2945,7 +2979,7 @@ $('coop-btn').addEventListener('click', () => {
 });
 
 // для фона меню и для автотестов
-window.__deepback = { coop, schools, hurtPlayer: (a, w) => hurtPlayer(a, w), COMBAT, thief, strike: () => strike(), castaway, ach, giant, playOutro: (e) => playOutro(e), get outro() { return outro; }, traderBoat, openTrader: () => openTrader(), strikeBolt: () => strikeBolt(), get bolt() { return bolt; }, showArmsHint, planShot: (s) => planShot(s), cameraRoomy: (c, r) => cameraRoomy(c, r), ark, enterArk, killLeech, lineClear: (...a) => lineClear(...a), introPoint: (s) => introPoint(s), S, sky, envScene, whale, ambient, scene, post, voice, intro, startIntro, endIntro, player, city, ocean, deeplings, rain, navDots, startRun, startDay, endDay, keys, pressed, setYaw: (v) => (yaw = v) };
+window.__deepback = { coop, schools, updateDash: (dt) => updateDash(dt), hurtPlayer: (a, w) => hurtPlayer(a, w), COMBAT, thief, strike: () => strike(), castaway, ach, giant, playOutro: (e) => playOutro(e), get outro() { return outro; }, traderBoat, openTrader: () => openTrader(), strikeBolt: () => strikeBolt(), get bolt() { return bolt; }, showArmsHint, planShot: (s) => planShot(s), cameraRoomy: (c, r) => cameraRoomy(c, r), ark, enterArk, killLeech, lineClear: (...a) => lineClear(...a), introPoint: (s) => introPoint(s), S, sky, envScene, whale, ambient, scene, post, voice, intro, startIntro, endIntro, player, city, ocean, deeplings, rain, navDots, startRun, startDay, endDay, keys, pressed, setYaw: (v) => (yaw = v) };
 
 // ============ Цикл ============
 const clock = new THREE.Clock();

@@ -802,3 +802,14 @@ test('бой: гарпун попадает по пиявке сбоку, у в�
   await waitFor(page, () => /Глубинник изранил тебя/.test(document.getElementById('modal-body').textContent));
   assert.deepEqual(page.errors, []);
 });
+
+test('рывок (V): бросок вперёд и неуязвимость к укусу на долю секунды', async (t) => {
+  const page = await openGame(env); t.after(() => page.context().close().catch(() => {}));
+  await startNewRun(page);
+  const p0 = await game(page, () => { const d = window.__deepback; d.setYaw(Math.PI); d.keys.add('KeyW'); d.pressed.add('KeyV'); d.updateDash(0.016); d.keys.delete('KeyW'); return { x: d.player.pos.x, z: d.player.pos.z, vz: d.player.vel.z, inv: d.S.dashInv }; });
+  assert.ok(Math.abs(p0.vz) > 10, `скорость рывка ${p0.vz}`);
+  assert.ok(p0.inv > 0);
+  const hp = await game(page, () => { const d = window.__deepback; d.S.dashInv = 0.3; d.hurtPlayer(50, 'leech'); return d.S.hp; });
+  assert.equal(hp, 100);
+  assert.deepEqual(page.errors, []);
+});

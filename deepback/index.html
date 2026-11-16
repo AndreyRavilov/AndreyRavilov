@@ -99,6 +99,7 @@
   .ebar.flash { border-color: #fff; box-shadow: 0 0 8px #fff; }
   .dmg { position: absolute; transform: translate(-50%, -100%); font-weight: 800; font-size: 18px; color: #ffe08a; text-shadow: 0 2px 4px #000, 0 0 2px #000; }
   .dmg.me { color: #ff6b6b; }
+  .dmg.dodge { color: #8ff0ff; font-size: 15px; }
   body.hurt::after { content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 4; box-shadow: inset 0 0 160px rgba(255,30,30,.65); animation: hurtFade .6s ease-out forwards; }
   @keyframes hurtFade { from { opacity: 1; } to { opacity: 0; } }
   @media (prefers-reduced-motion: reduce) { #hpbar.danger { animation: none; } body.hurt::after { animation-duration: .01s; } }
@@ -298,7 +299,8 @@
       <kbd>Мышь</kbd><span>камера (клик — захватить курсор)</span>
       <kbd>Space</kbd><span>прыжок / всплыть · <b>C</b> — нырнуть</span>
       <kbd>E</kbd><span>подобрать / сдать груз у шлюза</span>
-      <kbd>F</kbd><span>гарпун: отогнать пиявок и глубинников</span>
+      <kbd>F</kbd><span>гарпун: сам наводится на ближайшего врага впереди</span>
+      <kbd>V</kbd><span>рывок-уклон: короткий бросок, на миг неуязвим</span>
       <kbd>1 2 3</kbd><span>взять оружие в руку · <b>ЛКМ</b> — использовать · <b>X</b> — убрать</span>
       <kbd>G</kbd><span>бросить солевую бомбу (купить у Брана)</span>
       <kbd>Q</kbd><span>ракетница, раз в день (купить у Брана)</span>
