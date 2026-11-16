@@ -288,3 +288,13 @@ test('гарпун отпугивает глубинника', () => {
   d.scare();
   assert.ok(d.flee >= 7);
 });
+
+test('дома из перевёрнутых лодок стоят на спине и не перекрывают площадку у шлюза', async () => {
+  const THREE = await import('three');
+  const { City, SPAWN } = await import('../../src/city.js');
+  for (const seed of [1, 2, 3, 4, 5]) {
+    const city = new City(new THREE.Scene());
+    city.generate(seed, 2, 0, 7, {});
+    assert.ok(!city.overlaps(SPAWN.x, SPAWN.z, 1.2), `сид ${seed}: площадка занята`);
+  }
+});
