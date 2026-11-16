@@ -186,6 +186,24 @@ export class Audio {
     [392, 523, 659].forEach((f, i) => setTimeout(() => this.tone({ type: 'triangle', f0: f, dur: 0.3, vol: 0.15 }), i * 90));
   }
 
+  // колокольчик лодки торговца
+  bell() {
+    [1175, 1568].forEach((f, i) => setTimeout(() => {
+      this.tone({ type: 'sine', f0: f, dur: 1.6, vol: 0.09, attack: 0.005 });
+      this.tone({ type: 'sine', f0: f * 2.7, dur: 0.6, vol: 0.03, attack: 0.005 });
+    }, i * 380));
+  }
+
+  // далёкий зов с плота: два протяжных «эй!»
+  call() {
+    [0, 700].forEach((d) => setTimeout(() => this.tone({ type: 'sawtooth', f0: 420, f1: 330, dur: 0.5, vol: 0.05, attack: 0.04, lp: 1400 }), d));
+  }
+
+  // достижение: короткая восходящая фанфара
+  fanfare() {
+    [523, 659, 784, 1047].forEach((f, i) => setTimeout(() => this.tone({ type: 'triangle', f0: f, dur: 0.35, vol: 0.12 }), i * 110));
+  }
+
   hit() {
     this.tone({ type: 'square', f0: 180, f1: 60, dur: 0.35, vol: 0.18, lp: 1200 });
   }

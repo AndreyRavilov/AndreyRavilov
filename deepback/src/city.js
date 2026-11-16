@@ -385,6 +385,13 @@ export class City {
       if (p) this.addCrane(rng, p.x, p.z);
     }
 
+    // дома из перевёрнутых лодок — на свободных местах, своим генератором
+    const br = mulberry32((seed ^ 0x2545f491) >>> 0);
+    const boats = 4 + Math.floor(br() * 3);
+    for (let i = 0; i < boats; i++) {
+      const p = this.randomPoint(br, 0.1, 0.6, 4.2, 40);
+      if (p && Math.hypot(p.x, p.z) > 16) this.addBoatHouse(br, p.x, p.z);
+    }
     // Припасы: рыба у краёв (затопит первой), ворвань в кварталах
     const fish = 18;
     for (let i = 0; i < fish; i++) {
@@ -743,6 +750,69 @@ export class City {
       }
       g.add(grp);
     }
+  }
+
+  // Дом из перевёрнутой лодки: корпус килем вверх, дощатый торец с дверью,
+  // труба сквозь днище, подпорки по бокам
+  addBoatHouse(r, x, z) {
+    const len = 7 + r() * 3;
+    const w = 3.2 + r() * 0.8;
+    const y = backHeight(x, z);
+    const g = new THREE.Group();
+    g.position.set(x, y - 0.3, z);
+    g.rotation.y = r() * Math.PI;
+    const hullMat = wallMats[Math.floor(r() * wallMats.length)];
+    const hull = new THREE.Mesh(boxProjectUV(new THREE.CylinderGeometry(w / 2, w / 2, len, 14, 1, true, Math.PI / 2, Math.PI), 2.4), hullMat);
+    hull.rotation.x = Math.PI / 2;
+    hull.scale.set(1, 1, 1.25);
+    g.add(hull);
+    // киль и шпангоуты снаружи
+    const keel = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.3, len + 0.6), M.trim);
+    keel.position.y = (w / 2) * 1.25 + 0.05;
+    g.add(keel);
+    for (let k = -2; k <= 2; k++) {
+      const rib = new THREE.Mesh(new THREE.TorusGeometry(w / 2 + 0.06, 0.07, 5, 16, Math.PI), M.trim);
+      rib.scale.set(1, 1.25, 1);
+      rib.position.z = (k / 2.5) * (len / 2);
+      g.add(rib);
+    }
+    // торцы: дощатые стенки, в переднем — дверь и окно
+    for (const s of [-1, 1]) {
+      const end = new THREE.Mesh(boxProjectUV(new THREE.CircleGeometry(w / 2, 14, 0, Math.PI), 2.4), M.deck);
+      end.scale.set(1, 1.25, 1);
+      end.position.z = (s * len) / 2;
+      if (s < 0) end.rotation.y = Math.PI;
+      g.add(end);
+    }
+    const door = new THREE.Mesh(new THREE.BoxGeometry(1.0, 1.9, 0.12), M.dark);
+    door.position.set(0, 0.95, len / 2 + 0.04);
+    g.add(door);
+    const win = new THREE.Mesh(new THREE.CircleGeometry(0.28, 12), M.window);
+    win.position.set(w * 0.25, 2.3, len / 2 + 0.06);
+    g.add(win);
+    const pipe = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.16, 1.6, 8), M.rust);
+    pipe.position.set(w * 0.15, (w / 2) * 1.25 + 0.6, -len * 0.2);
+    g.add(pipe);
+    for (const s of [-1, 1]) {
+      for (const k of [-1, 1]) {
+        const prop = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.1, 1.8, 6), M.trim);
+        prop.position.set(s * (w / 2 + 0.35), 0.7, (k * len) / 3);
+        prop.rotation.z = -s * 0.45;
+        g.add(prop);
+      }
+    }
+    shadow(g);
+    this.group.add(g);
+    // столкновение: прямоугольник по габаритам с учётом поворота
+    const c = Math.abs(Math.cos(g.rotation.y));
+    const sn = Math.abs(Math.sin(g.rotation.y));
+    const hx = (w / 2 + 0.4) * c + (len / 2) * sn;
+    const hz = (w / 2 + 0.4) * sn + (len / 2) * c;
+    this.colliders.push({ type: 'box', minX: x - hx, maxX: x + hx, minZ: z - hz, maxZ: z + hz, bottom: y - 1, top: y + w * 0.65 + 0.3 });
+    const blob = aoBlob(w * 1.6, len * 1.2);
+    blob.position.set(x, y + 0.04, z);
+    blob.rotation.y = g.rotation.y;
+    this.group.add(blob);
   }
 
   addArch(rng, x, z) {

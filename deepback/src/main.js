@@ -111,7 +111,7 @@ const ach = new Achievements(achStore);
 function achieve(a) {
   if (!a) return;
   toast(`${a.icon} Достижение: ${a.title} — ${a.desc}`, 'achv');
-  audio.deposit?.();
+  audio.fanfare?.();
 }
 const traderBoat = new TraderBoat(scene);
 const giant = new DistantGiant(scene);
@@ -229,6 +229,9 @@ function applyTime(p) {
     skyMat.uniforms.horizon.value.lerp(regionC.set(RG.sky), 0.35 * day);
   }
   ocean.mat.uniforms.uGlow.value = RG && RG.glow ? Math.max(0, Math.min(1, (p - 0.35) / 0.4)) : 0;
+  // сияние: в ледяном море — ярко, в светящемся — слабо; только ночью
+  const nightK = Math.max(0, Math.min(1, (p - 0.6) / 0.3));
+  skyMat.uniforms.uAurora.value = RG ? (S.region === 'ice' ? 1 : S.region === 'glow' ? 0.4 : 0) * nightK * (S.weather === 'storm' ? 0.2 : 1) : 0;
   sunDirection(p, sunDir);
   skyMat.uniforms.uSunDir.value.copy(sunDir);
   skyMat.uniforms.uSunColor.value.copy(sun.color);
@@ -560,6 +563,9 @@ function applyUpgrades() {
   player.swimMul = 1 + 0.3 * (u.fins || 0);
   player.walkMul = 1 + 0.1 * (u.boots || 0);
   player.loadMul = 0.07 - 0.02 * (u.boots || 0);
+  player.lampBoost = u.lamp ? 1.9 : 1;
+  player.lamp.distance = u.lamp ? 48 : 30;
+  player.lamp.angle = u.lamp ? 0.62 : 0.5;
   // в ледяном море под водой дыхания хватает ненадолго
   player.oxyTime *= REGIONS[S.region || 'open'].oxyMul || 1;
 }
@@ -629,6 +635,10 @@ function startDay() {
   S.paused = false;
   $('hud').classList.remove('hidden');
   toast(`День ${S.cycle}. Мать всплыла. У тебя ${Math.round(S.T / 60 * 10) / 10} мин.`);
+  if (S.cycle > 1 && S.up.trap && !coop.isGuest) {
+    S.food += S.up.trap;
+    toast(`Верши у шлюза принесли за ночь 🐟 ${S.up.trap}.`, 'ok');
+  }
   if (S.cycle === 2) toast('На спине завелись пиявки, а под водой кто-то светится. F — гарпун!', 'warn');
   if (S.cycle === 4) toast('Глубинников стало двое.', 'danger');
   if (S.lore < LORE.length) toast('Где-то на опасном краю светится реликвия.', 'relic');
@@ -637,6 +647,8 @@ function startDay() {
   if (S.region !== 'open') toast(`🧭 ${R.name}. ${R.note}`, 'relic');
   achieve(ach.seaVisited(S.region, REGION_KEYS.length));
   if (S.cycle >= 10) achieve(ach.unlock('day10'));
+  if (castaway.active) setTimeout(() => audio.call(), 2500);
+  if (traderBoat.active) setTimeout(() => audio.bell(), 1500);
   if (castaway.active) toast('🛟 В море дрейфует плот, на нём кто-то машет! Доплыви и забери выжившего в Ковчег.', 'quest');
   if (traderBoat.active) toast('⛵ К краю спины причалила лодка торговца — у него есть что обменять.', 'quest');
   if (S.quest) toast(S.quest.text, 'quest');
@@ -1069,7 +1081,8 @@ function nearestPickup() {
 }
 
 function inHatch() {
-  return Math.hypot(player.pos.x - HATCH.x, player.pos.z - HATCH.z) < 2.8 && Math.abs(player.pos.y - HATCH.y) < 3;
+  const r = S.up.winch ? 5.6 : 2.8;
+  return Math.hypot(player.pos.x - HATCH.x, player.pos.z - HATCH.z) < r && Math.abs(player.pos.y - HATCH.y) < 3 + (S.up.winch ? 1.5 : 0);
 }
 
 function updateGame(dt) {
@@ -1152,6 +1165,7 @@ function updateGame(dt) {
 
   schools.update(dt, S.time, ocean.level, ocean.amp);
   updateWakes(dt);
+  updateThreat();
   if (giant.update(dt, ocean.level, S.mode === 'day' && S.weather !== 'fog')) {
     audio.moan(0.35);
     if (!S.sawGiant) {
@@ -1196,7 +1210,7 @@ function updateGame(dt) {
   // свет
   applyTime(S.mode === 'day' ? p : 1);
   updateWeather(dt);
-  player.lamp.intensity = p > 0.55 || player.headUnder ? 45 : 0;
+  player.lamp.intensity = p > 0.55 || player.headUnder ? 45 * (player.lampBoost || 1) : 0;
   city.hatchRing.material.opacity = 0.35 + Math.sin(S.time * 4) * 0.2 + (p > 0.75 ? 0.3 : 0);
   city.beaconLight.intensity = 40 + p * 160 + (p > 0.75 ? Math.sin(S.time * 8) * 60 : 0);
 }
@@ -1361,6 +1375,30 @@ function updateSplashes(dt) {
   }
   splashes.instanceMatrix.needsUpdate = true;
   if (splashes.instanceColor) splashes.instanceColor.needsUpdate = true;
+}
+
+// Стрелка угрозы у края экрана: охотящийся глубинник ближе 35 м
+const threatV = new THREE.Vector3();
+function updateThreat() {
+  const el = $('threat');
+  let best = null;
+  let bd = 35;
+  for (const d of deeplings) {
+    if (!d.active || !d.hunting) continue;
+    const dd = d.pos.distanceTo(player.pos);
+    if (dd < bd) { bd = dd; best = d; }
+  }
+  if (!best || S.mode !== 'day' && S.mode !== 'closing') { el.classList.add('hidden'); return; }
+  // направление в координатах камеры: вправо/вверх по экрану
+  threatV.copy(best.pos).sub(camera.position).applyQuaternion(camera.quaternion.clone().invert());
+  const onScreen = threatV.z < 0 && Math.abs(threatV.x / -threatV.z) < 0.9 && Math.abs(threatV.y / -threatV.z) < 0.5;
+  if (onScreen) { el.classList.add('hidden'); return; }
+  el.classList.remove('hidden');
+  const rx = innerWidth * 0.42;
+  const ry = innerHeight * 0.38;
+  const a2 = Math.atan2(threatV.y, threatV.x);
+  el.style.transform = `translate(${Math.cos(a2) * rx}px, ${-Math.sin(a2) * ry}px)`;
+  el.firstChild.style.transform = `rotate(${Math.PI / 2 - a2}rad) scale(${1.4 - bd / 50})`;
 }
 
 // Круги на воде от ныряльщика: бредёт по мелководью или плывёт у поверхности
@@ -2685,6 +2723,15 @@ const coop = createCoop({
     netLabels.clear();
   },
 });
+// сетевой такт не зависит от частоты кадров: на слабом компьютере
+// отрисовка может тормозить, а обмен с комнатой — нет
+let netLast = performance.now();
+setInterval(() => {
+  const now = performance.now();
+  const dt = Math.min(0.5, (now - netLast) / 1000);
+  netLast = now;
+  coop.tick(dt);
+}, 100);
 $('coop-btn').addEventListener('click', () => {
   audio.init();
   audio.resume();
@@ -2733,7 +2780,6 @@ function frame() {
     updateCamera(dt);
     updateHud();
   }
-  coop.tick(dt);
   // Мать живая: хвост медленно поднимается из воды, плавники гребут
   KELP_TIME.value = S.time;
   animateRegion(regionGroup, S.time, (x, z) => ocean.surfaceAt(x, z));
@@ -2746,6 +2792,7 @@ function frame() {
     camera.position.fromArray(S.debugCam[0]);
     camera.lookAt(...S.debugCam[1]);
   }
+  coop.frame(dt);
   pressed.clear();
   autoQuality(rawDt);
   post.render(dt, { under: S.underK || 0, time: S.time, sun: sunOnScreen() });

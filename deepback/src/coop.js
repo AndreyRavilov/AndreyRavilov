@@ -48,6 +48,7 @@ export function createCoop(ctx) {
     leave,
     act,
     tick,
+    frame,
     wait,
     sleep,
     newDay,
@@ -233,7 +234,11 @@ export function createCoop(ctx) {
       C.sendT = SEND_EVERY;
       sendSelf();
     }
-    updateRemotes(dt);
+  }
+
+  // каждый кадр: плавное движение чужих ныряльщиков и подписи над ними
+  function frame(dt) {
+    if (C.room) updateRemotes(dt);
   }
 
   function sendSelf() {
