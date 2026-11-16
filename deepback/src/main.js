@@ -23,6 +23,7 @@ import * as ARMS from './armory.js';
 import { NIGHT_ROLES, nightLine } from './residents.js';
 import { createCoop, RemoteDiver } from './coop.js';
 import { REGIONS, regionFor, buildRegion, animateRegion } from './regions.js';
+import { Schools } from './schools.js';
 
 // ============ Рендер и сцена ============
 const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: false, powerPreference: 'high-performance' });
@@ -97,6 +98,8 @@ for (const mtl of MATERIALS.walls || []) addCaustics(mtl);
 for (const mtl of MATERIALS.roofs || []) addCaustics(mtl);
 const city = new City(scene);
 const player = new Player(scene);
+const schools = new Schools(scene);
+const schoolV = new THREE.Vector3();
 player.dress(DIVER_TEX.cloth, DIVER_TEX.patina);
 const audio = new Audio();
 const voice = new Voice();
@@ -575,6 +578,7 @@ function startDay() {
   rain.visible = S.weather === 'storm';
   S.thunderTimer = 5;
   const R = REGIONS[S.region];
+  schools.reset(3 + (S.region === 'reef' ? 3 : 0), mulberry32(S.runSeed + S.cycle * 577));
   city.generate(S.runSeed + S.cycle * 1013, S.cycle, S.lore, LORE.length, { keepsake: S.quest?.kind === 'keepsake', extraFood: R.extraFood, extraScrap: R.extraScrap, extraLeeches: R.extraLeeches });
   navGrid = NAV.buildGrid((x, z) => backU(x, z) >= 0.97 || city.overlaps(x, z, 0.8));
   S.navTimer = 0;
@@ -934,6 +938,9 @@ function updateGame(dt) {
   } else if (hatch) {
     prompt = `<b>E</b> — сдать груз · <b>R</b> — укрыться в Ковчеге и закончить день`;
   }
+  // косяк рыб рядом (только в воде)
+  const school = !near && !hatch && player.swimming ? schools.near(schoolV.set(player.pos.x, player.pos.y + 1, player.pos.z)) : null;
+  if (school) prompt = player.weight + ITEM.food.weight > player.capacity ? 'Косяк рядом, но груз полон' : '<b>E</b> — поймать рыбу из косяка';
   $('prompt').innerHTML = prompt;
   $('prompt').classList.toggle('hidden', !prompt);
   if (pressed.has('KeyE')) {
@@ -948,6 +955,13 @@ function updateGame(dt) {
         if (near.type === 'relic') toast('Реликвия! Донеси её до Ковчега, чтобы прочитать.', 'relic');
       } else toast('Слишком тяжело. Сначала сдай груз в Ковчег.', 'warn');
     } else if (hatch) deposit();
+    else if (school && player.weight + ITEM.food.weight <= player.capacity && schools.catchFrom(school)) {
+      player.carried.push('food');
+      player.refreshPack();
+      audio.pickup('food');
+      for (let i = 0; i < 10; i++) ambient.bubbles?.spawn?.(school.center.x + (Math.random() - 0.5) * 2, school.center.y, school.center.z + (Math.random() - 0.5) * 2, 0, 1 + Math.random(), 0, 1.5, 0.15);
+      if (!S.caughtFish) { S.caughtFish = true; toast('Рыба из косяка! Косяк шарахнулся — он даёт ещё пару рыб, потом уплывёт.', 'ok'); }
+    }
   }
   if (pressed.has('KeyR') && hatch) {
     if (coop.active && coop.players().length > 1) coopWait();
@@ -962,6 +976,7 @@ function updateGame(dt) {
     fadeBeam(pk);
   }
 
+  schools.update(dt, S.time, ocean.level);
   updateNavigator(dt);
   updateHarpoon(dt);
   updateHolding();
@@ -1351,6 +1366,7 @@ function startIntro(onDone) {
   rollWeather(drng, 1);
   const q = makeQuest(drng, S.alive, 1);
   setRegion('open');
+  schools.reset(0, Math.random);
   city.generate(S.runSeed + 1013, 1, S.lore, LORE.length, { keepsake: q?.kind === 'keepsake' });
   navGrid = NAV.buildGrid((x, z) => backU(x, z) >= 0.97 || city.overlaps(x, z, 0.8));
   intro.cams = null;
@@ -2424,7 +2440,7 @@ $('coop-btn').addEventListener('click', () => {
 });
 
 // для фона меню и для автотестов
-window.__deepback = { coop, strikeBolt: () => strikeBolt(), get bolt() { return bolt; }, showArmsHint, planShot: (s) => planShot(s), cameraRoomy: (c, r) => cameraRoomy(c, r), ark, enterArk, killLeech, lineClear: (...a) => lineClear(...a), introPoint: (s) => introPoint(s), S, sky, envScene, whale, ambient, scene, post, voice, intro, startIntro, endIntro, player, city, ocean, deeplings, rain, navDots, startRun, startDay, endDay, keys, pressed, setYaw: (v) => (yaw = v) };
+window.__deepback = { coop, schools, strikeBolt: () => strikeBolt(), get bolt() { return bolt; }, showArmsHint, planShot: (s) => planShot(s), cameraRoomy: (c, r) => cameraRoomy(c, r), ark, enterArk, killLeech, lineClear: (...a) => lineClear(...a), introPoint: (s) => introPoint(s), S, sky, envScene, whale, ambient, scene, post, voice, intro, startIntro, endIntro, player, city, ocean, deeplings, rain, navDots, startRun, startDay, endDay, keys, pressed, setYaw: (v) => (yaw = v) };
 
 // ============ Цикл ============
 const clock = new THREE.Clock();

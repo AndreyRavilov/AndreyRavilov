@@ -651,3 +651,22 @@ test('совместная игра: двое в одной комнате ви�
   assert.deepEqual(A.errors, []);
   assert.deepEqual(B.errors, []);
 });
+
+test('косяк рыб: нырнуть к косяку и поймать рыбу на E', async (t) => {
+  const page = await openGame(env); t.after(() => page.context().close().catch(() => {}));
+  await startNewRun(page);
+  await waitFor(page, () => window.__deepback.schools.list.length >= 3);
+  // ныряльщик прямо в косяке
+  await game(page, () => {
+    const d = window.__deepback;
+    const sc = d.schools.list[0];
+    d.S.t = d.S.T * 0.1;
+    d.player.pos.set(sc.center.x, sc.center.y - 1, sc.center.z);
+    d.player.vel.set(0, 0, 0);
+  });
+  await waitFor(page, () => /поймать рыбу из косяка/.test(document.getElementById('prompt').textContent) || (window.__deepback.player.pos.set(window.__deepback.schools.list[0].center.x, window.__deepback.schools.list[0].center.y - 1, window.__deepback.schools.list[0].center.z), false));
+  await page.keyboard.press('KeyE');
+  await waitFor(page, () => window.__deepback.player.carried.includes('food'));
+  assert.equal(await game(page, () => window.__deepback.schools.list[0].left), 2);
+  assert.deepEqual(page.errors, []);
+});
