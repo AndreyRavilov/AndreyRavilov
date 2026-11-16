@@ -422,6 +422,20 @@ export class City {
       const p = this.randomPoint(rng, 0.55, 0.92, 1);
       if (p) this.addLeech(rng, p.x, p.z);
     }
+    // особенности моря: свой генератор, чтобы раскладка города не сдвигалась
+    const xr = mulberry32((seed ^ 0x7f4a7c15) >>> 0);
+    for (let i = 0; i < (opts.extraFood || 0); i++) {
+      const p = this.randomPoint(xr, 0.45, 0.975, 1);
+      if (p) this.addPickup('food', p.x, p.z);
+    }
+    for (let i = 0; i < (opts.extraScrap || 0); i++) {
+      const p = this.randomPoint(xr, 0.3, 0.97, 1);
+      if (p) this.addPickup('scrap', p.x, p.z);
+    }
+    for (let i = 0; i < (cycle > 1 ? opts.extraLeeches || 0 : 0); i++) {
+      const p = this.randomPoint(xr, 0.55, 0.92, 1);
+      if (p) this.addLeech(xr, p.x, p.z);
+    }
     this.bake();
   }
 

@@ -22,6 +22,7 @@ import { ArkInterior, ARK_R } from './ark.js';
 import * as ARMS from './armory.js';
 import { NIGHT_ROLES, nightLine } from './residents.js';
 import { createCoop, RemoteDiver } from './coop.js';
+import { REGIONS, regionFor, buildRegion, animateRegion } from './regions.js';
 
 // ============ Рендер и сцена ============
 const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: false, powerPreference: 'high-performance' });
@@ -185,6 +186,7 @@ function mixHex(a, b, t, out) {
   return out.copy(tmpA).lerp(tmpB, t);
 }
 const fogDay = new THREE.Color();
+const regionC = new THREE.Color();
 function applyTime(p) {
   let a, b, t;
   if (p < 0.55) { a = PAL.day; b = PAL.dusk; t = p / 0.55; }
@@ -195,6 +197,16 @@ function applyTime(p) {
   mixHex(a.sun, b.sun, t, sun.color);
   mixHex(a.water, b.water, t, ocean.mat.uniforms.uDeep.value);
   mixHex(a.shallow, b.shallow, t, ocean.mat.uniforms.uShallow.value);
+  // своё море: вода, туман и небо смещаются к его цветам (ночью — меньше)
+  const RG = S.mode === 'intro' || S.mode === 'menu' ? null : REGIONS[S.region || 'open'];
+  if (RG && RG.deep) {
+    const k = 0.65 * (1 - p * 0.5);
+    ocean.mat.uniforms.uDeep.value.lerp(regionC.set(RG.deep), k);
+    ocean.mat.uniforms.uShallow.value.lerp(regionC.set(RG.shallow), k);
+    fogDay.lerp(regionC.set(RG.fog), 0.45 * (1 - p * 0.6));
+    skyMat.uniforms.horizon.value.lerp(regionC.set(RG.sky), 0.35 * (1 - p * 0.6));
+  }
+  ocean.mat.uniforms.uGlow.value = RG && RG.glow ? Math.max(0, Math.min(1, (p - 0.35) / 0.4)) : 0;
   sunDirection(p, sunDir);
   skyMat.uniforms.uSunDir.value.copy(sunDir);
   skyMat.uniforms.uSunColor.value.copy(sun.color);
@@ -460,7 +472,7 @@ function updateHud() {
   $('hud').classList.toggle('alarm', p > 0.85 && S.mode === 'day');
   const W = WEATHER[S.weather];
   const gusting = S.weather === 'storm' && S.gust && S.gust.k > 0.3;
-  $('weather').textContent = `${W.icon} ${W.name}${gusting ? ' · порыв ветра!' : ''}`;
+  $('weather').textContent = `${W.icon} ${W.name}${S.region && S.region !== 'open' ? ` · ${REGIONS[S.region].name}` : ''}${gusting ? ' · порыв ветра!' : ''}`;
   const q = S.quest;
   if (q) {
     const r = resident(q.who);
@@ -516,6 +528,23 @@ function applyUpgrades() {
   player.swimMul = 1 + 0.3 * (u.fins || 0);
   player.walkMul = 1 + 0.1 * (u.boots || 0);
   player.loadMul = 0.07 - 0.02 * (u.boots || 0);
+  // в ледяном море под водой дыхания хватает ненадолго
+  player.oxyTime *= REGIONS[S.region || 'open'].oxyMul || 1;
+}
+
+// Море дня: декорации вокруг Матери
+let regionGroup = null;
+function setRegion(key) {
+  S.region = key;
+  if (regionGroup) {
+    scene.remove(regionGroup);
+    regionGroup.traverse((m) => m.geometry && m.geometry.dispose());
+    regionGroup = null;
+  }
+  if (key !== 'open') {
+    regionGroup = buildRegion(key, S.runSeed + S.cycle * 31, W0);
+    scene.add(regionGroup);
+  }
 }
 
 function startDay() {
@@ -534,6 +563,8 @@ function startDay() {
   S.bombsInAir = [];
   const drng = mulberry32(S.runSeed + S.cycle * 7919);
   S.weather = rollWeather(drng, S.cycle);
+  setRegion(regionFor(S.runSeed, S.cycle));
+  applyUpgrades();
   S.quest = makeQuest(drng, S.alive, S.cycle);
   S.T = ECO.dayLength(S.cycle, S.weather);
   ocean.amp = S.weather === 'storm' ? 2.4 : S.weather === 'calm' ? 0.45 : 1;
@@ -543,7 +574,8 @@ function startDay() {
   world.wind = null;
   rain.visible = S.weather === 'storm';
   S.thunderTimer = 5;
-  city.generate(S.runSeed + S.cycle * 1013, S.cycle, S.lore, LORE.length, { keepsake: S.quest?.kind === 'keepsake' });
+  const R = REGIONS[S.region];
+  city.generate(S.runSeed + S.cycle * 1013, S.cycle, S.lore, LORE.length, { keepsake: S.quest?.kind === 'keepsake', extraFood: R.extraFood, extraScrap: R.extraScrap, extraLeeches: R.extraLeeches });
   navGrid = NAV.buildGrid((x, z) => backU(x, z) >= 0.97 || city.overlaps(x, z, 0.8));
   S.navTimer = 0;
   S.navPath = null;
@@ -565,6 +597,7 @@ function startDay() {
   if (S.lore < LORE.length) toast('Где-то на опасном краю светится реликвия.', 'relic');
   const W = WEATHER[S.weather];
   if (S.cycle > 1) toast(`${W.icon} ${W.name}. ${W.note}`, S.weather === 'storm' ? 'danger' : '');
+  if (S.region !== 'open') toast(`🧭 ${R.name}. ${R.note}`, 'relic');
   if (S.quest) toast(S.quest.text, 'quest');
   lockPointer();
 }
@@ -1317,6 +1350,7 @@ function startIntro(onDone) {
   const drng = mulberry32(S.runSeed + 7919);
   rollWeather(drng, 1);
   const q = makeQuest(drng, S.alive, 1);
+  setRegion('open');
   city.generate(S.runSeed + 1013, 1, S.lore, LORE.length, { keepsake: q?.kind === 'keepsake' });
   navGrid = NAV.buildGrid((x, z) => backU(x, z) >= 0.97 || city.overlaps(x, z, 0.8));
   intro.cams = null;
@@ -2431,6 +2465,7 @@ function frame() {
   coop.tick(dt);
   // Мать живая: хвост медленно поднимается из воды, плавники гребут
   KELP_TIME.value = S.time;
+  animateRegion(regionGroup, S.time, (x, z) => ocean.surfaceAt(x, z));
   if (whale.userData.fluke) {
     const slow = Math.sin(S.time * 0.12);
     whale.userData.fluke.rotation.x = -0.12 - Math.max(0, slow) * 0.42 + Math.sin(S.time * 0.5) * 0.05;

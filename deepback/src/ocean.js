@@ -39,6 +39,7 @@ uniform vec3 uSunColor;
 uniform vec3 uWhale; // a, b, H
 uniform sampler2D uDetail;
 uniform float uHasDetail;
+uniform float uGlow;
 varying vec3 vWorld;
 varying vec3 vNormalW;
 #include <fog_pars_fragment>
@@ -104,6 +105,11 @@ void main() {
   float foam = clamp(shore * smoothstep(0.30, 0.65, fn + shore * 0.25) + crest * fn, 0.0, 1.0);
   col = mix(col, vec3(0.90, 0.95, 0.97), foam * 0.9);
 
+  // светящееся море: гребни и пена горят голубым, по ряби — искры планктона
+  if (uGlow > 0.001) {
+    float spark = step(0.9, detail(vWorld.xz * 0.45 + vec2(uTime * 0.05, uTime * 0.03)));
+    col += vec3(0.15, 0.85, 1.0) * uGlow * (foam * 1.6 + crest * 2.5 + spark * 0.5 + smoothstep(0.6, 0.9, h2) * 0.25);
+  }
   float alpha = mix(0.84, 0.97, fres);
   alpha = max(alpha, foam);
   if (under) {
@@ -141,6 +147,7 @@ export class Ocean {
           uWhale: { value: new THREE.Vector3(WHALE.a, WHALE.b, WHALE.H) },
           uDetail: { value: detail },
           uHasDetail: { value: detail ? 1 : 0 },
+          uGlow: { value: 0 },
         },
       ]),
       vertexShader: VERT,
