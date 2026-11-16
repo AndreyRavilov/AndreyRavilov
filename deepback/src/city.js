@@ -1080,8 +1080,9 @@ export class City {
   addLeech(rng, x, z) {
     const g = new THREE.Group();
     const segs = [];
+    const mat = M.leech.clone(); // своя копия: вспыхивает при ударе и краснеет перед укусом
     for (let i = 0; i < 4; i++) {
-      const s = new THREE.Mesh(LEECH_SEGS[i], M.leech);
+      const s = new THREE.Mesh(LEECH_SEGS[i], mat);
       s.scale.set(1, 0.7, 1.2);
       s.position.z = i * 0.7;
       g.add(s);
@@ -1104,7 +1105,7 @@ export class City {
     g.position.set(x, y + 0.3, z);
     g.userData.dynamic = true;
     this.group.add(g);
-    this.leeches.push({ mesh: g, segs, x, z, dir: rng() * Math.PI * 2, cool: 0, phase: rng() * 6, push: null, hp: 3, maxHp: 3 });
+    this.leeches.push({ mesh: g, segs, x, z, dir: rng() * Math.PI * 2, cool: 0, phase: rng() * 6, push: null, hp: 3, maxHp: 3, mat, windup: 0 });
   }
 }
 

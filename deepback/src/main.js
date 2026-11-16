@@ -1276,7 +1276,31 @@ function updateLeeches(dt) {
     L.mesh.rotation.y = L.dir + Math.PI;
     L.segs.forEach((s, i) => (s.position.x = Math.sin(L.phase + i * 1.2) * 0.18));
 
-    if (d < 1.4 && Math.abs(player.pos.y - ly) < 1.8 && L.cool <= 0) {
+    // замах перед укусом: пиявка встаёт на дыбы и наливается красным — можно отскочить или ударить
+    const reach = (r) => d < r && Math.abs(player.pos.y - ly) < 1.8;
+    let bite = false;
+    if (!L.windup && !L.push && L.cool <= 0 && reach(2.0)) L.windup = 0.55;
+    if (L.windup > 0) {
+      L.windup -= dt;
+      if (L.push) L.windup = 0; // удар гарпуном сбивает замах
+      if (L.windup <= 0) {
+        L.windup = 0;
+        if (reach(1.7)) bite = true;
+        else L.cool = 1.0; // промахнулась
+      }
+    }
+    // цвет: вспышка от удара — белая, замах — красный
+    if (L.mat) {
+      const flash = Math.max(0, L.hitFlash || 0) * 4;
+      const warn = L.windup > 0 ? 1 - L.windup / 0.55 : 0;
+      L.mat.emissive.setRGB(0.16 + flash + warn * 0.5, 0.03 + flash * 0.9, 0.12 + flash * 0.9 - warn * 0.1);
+      L.mat.emissiveIntensity = 0.35 + flash * 0.6 + warn * 0.9;
+      // передние кольца поднимаются — пиявка встаёт на дыбы
+      const rear = Math.sin(Math.min(1, warn * 1.4) * Math.PI * 0.5);
+      if (L.segs[0]) L.segs[0].position.y = rear * 0.75;
+      if (L.segs[1]) L.segs[1].position.y = rear * 0.35;
+    }
+    if (bite) {
       L.cool = 2.5;
       player.vel.x += (dx / (d || 1)) * 12;
       player.vel.z += (dz / (d || 1)) * 12;

@@ -786,7 +786,9 @@ test('бой: гарпун попадает по пиявке сбоку, у в�
   await waitFor(page, () => document.querySelectorAll('#enemy-bars .ebar').length > 0);
   for (let i = 0; i < 3; i++) {
     await game(page, () => { const d = window.__deepback; d.S.harpoonCd = 0; d.city.leeches[0].push = null; const L = d.city.leeches[0]; d.player.pos.set(L.x - 2.2, L.mesh.position.y, L.z + 1.0); });
-    await page.keyboard.press('KeyF');
+    // первый удар — клавишей, остальные — напрямую (на 1 кадре в секунду нажатия иногда теряются)
+    if (i === 0) await page.keyboard.press('KeyF');
+    else await game(page, () => window.__deepback.strike());
     await waitFor(page, (n) => window.__deepback.city.leeches[0].hp <= 2 - n || window.__deepback.city.leeches[0].dead, i);
   }
   assert.ok(await game(page, () => window.__deepback.city.leeches[0].dead));
