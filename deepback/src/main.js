@@ -1574,6 +1574,11 @@ function updateNavigator(dt) {
     player: { x: player.pos.x, z: player.pos.z },
     yaw,
     path: S.navPath,
+    extras: [
+      ...(traderBoat.active ? [{ x: traderBoat.pos.x, z: traderBoat.pos.z, kind: 'trader' }] : []),
+      ...(castaway.active ? [{ x: castaway.pos.x, z: castaway.pos.z, kind: 'castaway' }] : []),
+      ...schools.list.filter((sc) => !sc.gone && sc.left > 0).map((sc) => ({ x: sc.center.x, z: sc.center.z, kind: 'school' })),
+    ],
   });
 }
 

@@ -13,6 +13,9 @@ export const MAP_COLORS = {
   ark: '#c8643c',
   player: '#ffffff',
   path: '#58f0d8',
+  trader: '#ffb347',
+  castaway: '#ff5a4a',
+  school: '#9fd8ff',
 };
 
 export const LEGEND = [
@@ -25,6 +28,9 @@ export const LEGEND = [
   ['keepsake', 'Вещь жителя'],
   ['leech', 'Пиявка'],
   ['deepling', 'Глубинник'],
+  ['school', 'Косяк рыб'],
+  ['trader', 'Торговец'],
+  ['castaway', 'Выживший на плоту'],
 ];
 
 const SCALE = 1.08; // пикселей на метр
@@ -147,6 +153,26 @@ export class Minimap {
       c.lineTo(x - 3.5, y + 3);
       c.closePath();
       c.fill();
+    }
+
+    // косяки, торговец, плот
+    for (const e of st.extras || []) {
+      const x = this.px(e.x);
+      const y = this.py(e.z);
+      c.fillStyle = MAP_COLORS[e.kind];
+      if (e.kind === 'school') {
+        c.globalAlpha = 0.7;
+        for (const [dx, dy] of [[-2, 0], [2, 1], [0, -2]]) { c.beginPath(); c.arc(x + dx, y + dy, 1.2, 0, Math.PI * 2); c.fill(); }
+        c.globalAlpha = 1;
+      } else {
+        const pulse = e.kind === 'castaway' ? 3.5 + Math.sin(st.time * 6) * 1 : 3.5;
+        c.beginPath();
+        c.arc(x, y, pulse, 0, Math.PI * 2);
+        c.fill();
+        c.strokeStyle = '#000';
+        c.lineWidth = 1;
+        c.stroke();
+      }
     }
 
     // игрок: стрелка по направлению взгляда
