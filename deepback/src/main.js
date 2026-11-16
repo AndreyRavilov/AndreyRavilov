@@ -24,6 +24,7 @@ import { NIGHT_ROLES, nightLine } from './residents.js';
 import { createCoop, RemoteDiver } from './coop.js';
 import { REGIONS, regionFor, buildRegion, animateRegion } from './regions.js';
 import { Schools } from './schools.js';
+import { Jellies, STING } from './jelly.js';
 import { DistantGiant } from './giant.js';
 import { ThiefGull } from './thief.js';
 import * as COMBAT from './combat.js';
@@ -106,6 +107,7 @@ for (const mtl of MATERIALS.roofs || []) addCaustics(mtl);
 const city = new City(scene);
 const player = new Player(scene);
 const schools = new Schools(scene);
+const jellies = new Jellies(scene);
 let achStore = null;
 try { achStore = window.localStorage; } catch { /* нет хранилища */ }
 const ach = new Achievements(achStore);
@@ -637,6 +639,10 @@ function startDay() {
   S.thunderTimer = 5;
   const R = REGIONS[S.region];
   schools.reset(3 + (S.region === 'reef' ? 3 : 0), mulberry32(S.runSeed + S.cycle * 577));
+  // медузы: с второго дня; гуще всего в светящемся море и на рифе
+  const JN = { open: 3, ice: 2, wrecks: 3, reef: 7, glow: 9 };
+  jellies.reset(S.cycle >= 2 ? JN[S.region] || 0 : 0, mulberry32(S.runSeed + S.cycle * 911));
+  jellies.setGlow(R.glow ? 1 : 0);
   if (traderComes(S.runSeed, S.cycle) && !coop.isGuest) traderBoat.arrive(S.runSeed, S.cycle);
   else traderBoat.leave();
   thief.reset(S.cycle >= 3 && S.weather !== 'storm');
@@ -802,7 +808,7 @@ function endDay(outcome) {
     const lostNames = killResidents(1);
     S.pop = Math.max(0, S.pop - 1);
     if (lostNames.length) lines.push(`${lostNames[0]} ушёл искать тебя в воду и не вернулся.`);
-    const why = S.wounded === 'deepling' ? 'Глубинник изранил тебя, ты потерял сознание в воде.' : S.wounded === 'leech' ? 'Пиявки изжалили тебя до беспамятства.' : 'Ты не успел к шлюзу.';
+    const why = S.wounded === 'deepling' ? 'Глубинник изранил тебя, ты потерял сознание в воде.' : S.wounded === 'leech' ? 'Пиявки изжалили тебя до беспамятства.' : S.wounded === 'jelly' ? 'Медузы обожгли тебя, и ты потерял сознание в воде.' : 'Ты не успел к шлюзу.';
     S.wounded = null;
     lines.push(`${why} Утром тебя нашли без сознания на палубе.${lost ? ` Груз (${lost}) унесло течением.` : ''} Один из жителей погиб, пока искал тебя.`);
   } else {
@@ -1216,6 +1222,14 @@ function updateGame(dt) {
   }
 
   schools.update(dt, S.time, ocean.level, ocean.amp);
+  const stung = jellies.update(dt, S.time, ocean.level, player);
+  if (stung) {
+    hurtPlayer(STING, 'jelly');
+    const away = player.pos.clone().sub(stung.mesh.position).setY(0);
+    if (away.lengthSq() > 1e-4) player.vel.addScaledVector(away.normalize(), 5);
+    audio.tone({ type: 'square', f0: 1400, f1: 300, dur: 0.25, vol: 0.08, lp: 3000 });
+    if (!S.jellyHinted) { S.jellyHinted = true; toast('Медуза обожгла! Обплывай их или лопни гарпуном (F / T).', 'danger'); }
+  }
   updateWakes(dt);
   updateDash(dt);
   tutorialTick();
@@ -1758,6 +1772,7 @@ function updateNavigator(dt) {
       ...(traderBoat.active ? [{ x: traderBoat.pos.x, z: traderBoat.pos.z, kind: 'trader' }] : []),
       ...(castaway.active ? [{ x: castaway.pos.x, z: castaway.pos.z, kind: 'castaway' }] : []),
       ...schools.list.filter((sc) => !sc.gone && sc.left > 0).map((sc) => ({ x: sc.center.x, z: sc.center.z, kind: 'school' })),
+      ...jellies.alive.map((j) => ({ x: j.x, z: j.z, kind: 'jelly' })),
     ],
   });
 }
@@ -1782,6 +1797,7 @@ function startIntro(onDone) {
   const q = makeQuest(drng, S.alive, 1);
   setRegion('open');
   schools.reset(0, Math.random);
+  jellies.reset(0, Math.random);
   traderBoat.leave();
   castaway.leave();
   city.generate(S.runSeed + 1013, 1, S.lore, LORE.length, { keepsake: q?.kind === 'keepsake' });
@@ -2502,6 +2518,7 @@ function throwHarpoon() {
   const enemies = [];
   for (const L of city.leeches) if (!L.dead) enemies.push({ x: L.x, y: L.mesh.position.y + 0.3, z: L.z, ref: L, kind: 'leech' });
   for (const D of deeplings) if (D.active) enemies.push({ x: D.pos.x, y: D.pos.y, z: D.pos.z, ref: D, kind: 'deepling' });
+  for (const j of jellies.alive) enemies.push({ x: j.x, y: j.y, z: j.z, ref: j, kind: 'jelly' });
   const tgt = COMBAT.throwTarget(player.pos, camDir, enemies);
   thrown.tgt = tgt;
   thrown.pos.set(player.pos.x, player.pos.y + 1.3, player.pos.z);
@@ -2524,6 +2541,7 @@ function updateThrow(dt) {
   if (thrown.phase === 'out' && t) {
     if (t.kind === 'leech' && !t.ref.dead) thrown.aim.set(t.ref.x, t.ref.mesh.position.y + 0.4, t.ref.z);
     if (t.kind === 'deepling' && t.ref.active) thrown.aim.copy(t.ref.pos);
+    if (t.kind === 'jelly' && !t.ref.dead) thrown.aim.copy(t.ref.mesh.position);
   }
   const goal = thrown.phase === 'out' ? thrown.aim : hand;
   const to = goal.clone().sub(thrown.pos);
@@ -2533,7 +2551,7 @@ function updateThrow(dt) {
     thrown.pos.copy(goal);
     if (thrown.phase === 'out') {
       thrown.phase = 'back';
-      if (t && !(t.kind === 'leech' && t.ref.dead) && !(t.kind === 'deepling' && !t.ref.active)) {
+      if (t && !t.ref.dead && !(t.kind === 'deepling' && !t.ref.active)) {
         const dmg = COMBAT.weaponDamage('spear', { spear: S.arms.spear, harpoonLvl: S.up.harpoon || 0 });
         hitEnemy(t.ref, t.kind, dmg);
         audio.hit();
@@ -2585,6 +2603,7 @@ function strike() {
   const enemies = [];
   for (const L of city.leeches) if (!L.dead) enemies.push({ x: L.x, y: L.mesh.position.y, z: L.z, ref: L, kind: 'leech' });
   for (const D of deeplings) if (D.active) enemies.push({ x: D.pos.x, y: D.pos.y, z: D.pos.z, ref: D, kind: 'deepling' });
+  for (const j of jellies.alive) enemies.push({ x: j.x, y: j.y - 0.9, z: j.z, ref: j, kind: 'jelly' });
   const camDir = { x: -Math.sin(yaw), z: -Math.cos(yaw) };
   const bodyDir = { x: -Math.sin(player.mesh.rotation.y), z: -Math.cos(player.mesh.rotation.y) };
   const tgt = COMBAT.pickTarget(player.pos, [camDir, bodyDir], enemies, range, { dy: player.swimming ? 4 : 2.6 });
@@ -2627,6 +2646,13 @@ function hitEnemy(ref, kind, dmg) {
   const r = COMBAT.damage(ref.hp ?? ref.maxHp ?? 1, dmg);
   ref.hp = r.hp;
   ref.hitFlash = 0.25;
+  if (kind === 'jelly') {
+    // медуза лопается: облачко светящихся искр
+    jellies.kill(ref);
+    for (let i = 0; i < 14; i++) ambient.bubbles.spawn(ref.x, ref.y, ref.z, (Math.random() - 0.5) * 3, (Math.random() - 0.3) * 2, (Math.random() - 0.5) * 3, 1, 0.12);
+    floatNumber(ref.x, ref.y + 1, ref.z, 'лоп!', 'dodge');
+    return;
+  }
   if (kind === 'leech') {
     const dx = ref.x - player.pos.x;
     const dz = ref.z - player.pos.z;
@@ -3157,7 +3183,7 @@ $('coop-btn').addEventListener('click', () => {
 });
 
 // для фона меню и для автотестов
-window.__deepback = { throwHarpoon: () => throwHarpoon(), get thrown() { return thrown; }, coop, schools, updateDash: (dt) => updateDash(dt), hurtPlayer: (a, w) => hurtPlayer(a, w), COMBAT, thief, strike: () => strike(), castaway, ach, giant, playOutro: (e) => playOutro(e), get outro() { return outro; }, traderBoat, openTrader: () => openTrader(), strikeBolt: () => strikeBolt(), get bolt() { return bolt; }, showArmsHint, planShot: (s) => planShot(s), cameraRoomy: (c, r) => cameraRoomy(c, r), ark, enterArk, killLeech, lineClear: (...a) => lineClear(...a), introPoint: (s) => introPoint(s), S, sky, envScene, whale, ambient, scene, post, voice, intro, startIntro, endIntro, player, city, ocean, deeplings, rain, navDots, startRun, startDay, endDay, keys, pressed, setYaw: (v) => (yaw = v) };
+window.__deepback = { jellies, throwHarpoon: () => throwHarpoon(), get thrown() { return thrown; }, coop, schools, updateDash: (dt) => updateDash(dt), hurtPlayer: (a, w) => hurtPlayer(a, w), COMBAT, thief, strike: () => strike(), castaway, ach, giant, playOutro: (e) => playOutro(e), get outro() { return outro; }, traderBoat, openTrader: () => openTrader(), strikeBolt: () => strikeBolt(), get bolt() { return bolt; }, showArmsHint, planShot: (s) => planShot(s), cameraRoomy: (c, r) => cameraRoomy(c, r), ark, enterArk, killLeech, lineClear: (...a) => lineClear(...a), introPoint: (s) => introPoint(s), S, sky, envScene, whale, ambient, scene, post, voice, intro, startIntro, endIntro, player, city, ocean, deeplings, rain, navDots, startRun, startDay, endDay, keys, pressed, setYaw: (v) => (yaw = v) };
 
 // ============ Цикл ============
 const clock = new THREE.Clock();

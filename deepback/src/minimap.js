@@ -16,6 +16,7 @@ export const MAP_COLORS = {
   trader: '#ffb347',
   castaway: '#ff5a4a',
   school: '#9fd8ff',
+  jelly: '#d59cff',
 };
 
 export const LEGEND = [
@@ -29,6 +30,7 @@ export const LEGEND = [
   ['leech', 'Пиявка'],
   ['deepling', 'Глубинник'],
   ['school', 'Косяк рыб'],
+  ['jelly', 'Медуза'],
   ['trader', 'Торговец'],
   ['castaway', 'Выживший на плоту'],
 ];
@@ -160,7 +162,14 @@ export class Minimap {
       const x = this.px(e.x);
       const y = this.py(e.z);
       c.fillStyle = MAP_COLORS[e.kind];
-      if (e.kind === 'school') {
+      if (e.kind === 'jelly') {
+        // медуза — маленький купол
+        c.globalAlpha = 0.85;
+        c.beginPath();
+        c.arc(x, y, 2, Math.PI, 0);
+        c.fill();
+        c.globalAlpha = 1;
+      } else if (e.kind === 'school') {
         c.globalAlpha = 0.7;
         for (const [dx, dy] of [[-2, 0], [2, 1], [0, -2]]) { c.beginPath(); c.arc(x + dx, y + dy, 1.2, 0, Math.PI * 2); c.fill(); }
         c.globalAlpha = 1;
