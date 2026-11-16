@@ -2520,6 +2520,7 @@ function updateThrow(dt) {
         S.hitStop = 0.05;
         // трос подтягивает пиявку к ныряльщику — добить её вблизи
         if (t.kind === 'leech' && !t.ref.dead) {
+          achieve(ach.unlock('rope'));
           const dx = player.pos.x - t.ref.x;
           const dz = player.pos.z - t.ref.z;
           const dl = Math.hypot(dx, dz) || 1;
@@ -2578,6 +2579,7 @@ function strike() {
     S.lastHitT = S.time;
     const dmg = COMBAT.weaponDamage('spear', { spear: S.arms.spear, harpoonLvl: lvl }) + c.bonus;
     if (c.finisher) {
+      achieve(ach.unlock('finisher'));
       floatNumber(tgt.x, tgt.y + 2.2, tgt.z, 'добивание!', 'combo');
       audio.tone({ type: 'square', f0: 520, f1: 180, dur: 0.22, vol: 0.1, lp: 1800 });
     }
@@ -2750,8 +2752,12 @@ function updateDeeplings(dt) {
       if (!S.lungeHinted) { S.lungeHinted = true; toast('Глубинник готовится к броску — рывок V уводит из-под зубов!', 'danger'); }
     }
     if (!D.windup) D.warned = false;
-    if (r === 'miss') floatNumber(D.pos.x, D.pos.y + 1.5, D.pos.z, 'мимо!', 'dodge');
+    if (r === 'miss') {
+      floatNumber(D.pos.x, D.pos.y + 1.5, D.pos.z, 'мимо!', 'dodge');
+      if (S.dashCd > 0) achieve(ach.unlock('dodge')); // промах сразу после рывка — увернулся сам
+    }
     if (r === 'bite' && S.dashInv > 0) {
+      achieve(ach.unlock('dodge'));
       floatNumber(player.pos.x, player.pos.y + 2.4, player.pos.z, 'уклон!', 'dodge');
       D.flee = 1.5;
     } else if (r === 'bite') {
