@@ -2,6 +2,23 @@ import * as THREE from 'three';
 import { STEP, inside, ITEM } from './city.js';
 import { backHeight } from './whale.js';
 
+// рыба в заплечной связке: веретено с хвостом, лежит на боку
+const PACK_FISH = (() => {
+  const body = new THREE.SphereGeometry(0.15, 10, 8);
+  body.scale(2.2, 0.55, 1);
+  const tail = new THREE.ConeGeometry(0.1, 0.16, 4);
+  tail.rotateZ(Math.PI / 2);
+  tail.translate(-0.38, 0, 0);
+  const a = body.toNonIndexed();
+  const b = tail.toNonIndexed();
+  const pos = new Float32Array(a.attributes.position.count * 3 + b.attributes.position.count * 3);
+  pos.set(a.attributes.position.array, 0);
+  pos.set(b.attributes.position.array, a.attributes.position.array.length);
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  g.computeVertexNormals();
+  return g;
+})();
 const R = 0.45;
 const HEIGHT = 1.8;
 export const CAPACITY = 8;
@@ -203,9 +220,10 @@ export class Player {
     for (const t of this.carried) {
       const size = t === 'fuel' ? 0.45 : 0.3;
       const m = new THREE.Mesh(
-        t === 'fuel' ? new THREE.CylinderGeometry(size * 0.7, size * 0.7, size * 1.2, 10) : new THREE.BoxGeometry(size, size, size),
+        t === 'fuel' ? new THREE.CylinderGeometry(size * 0.7, size * 0.7, size * 1.2, 10) : t === 'food' ? PACK_FISH : new THREE.BoxGeometry(size, size, size),
         this.packMat[t]
       );
+      if (t === 'food') m.rotation.y = (y * 7) % 1 - 0.5; // рыбы лежат вразнобой
       m.position.y = y + size / 2;
       m.castShadow = true;
       this.pack.add(m);

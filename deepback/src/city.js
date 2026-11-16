@@ -473,6 +473,14 @@ export class City {
     }
   }
 
+  // ореолы припасов: днём едва заметны, в сумерках и ночью ярче
+  setHaloStrength(k) {
+    for (const p of this.pickups) {
+      const h = p.mesh.userData.halo;
+      if (h) h.material.opacity = h.userData.base * k;
+    }
+  }
+
   groundAt(x, z, y = Infinity) {
     let g = backHeight(x, z);
     for (const c of this.colliders) {
@@ -975,7 +983,9 @@ export class City {
     // мягкое свечение вокруг припаса (в браузере — с текстурой пятна)
     const glowColor = { food: 0xcff6ff, fuel: 0xffb070, scrap: 0xd0d6ff, relic: 0x80ffff, keepsake: 0xff9fc8 }[type];
     const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: GLOW.tex, color: glowColor, transparent: true, opacity: GLOW.tex ? 0.75 : 0.25, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }));
-    halo.scale.setScalar(type === 'relic' || type === 'keepsake' ? 4 : 2.6);
+    halo.scale.setScalar(type === 'relic' || type === 'keepsake' ? 4 : 2.0);
+    halo.userData.base = halo.material.opacity;
+    g.userData.halo = halo;
     g.add(halo);
     // реликвия и вещь жителя видны издалека: столб света в небо
     if (type === 'relic' || type === 'keepsake') {

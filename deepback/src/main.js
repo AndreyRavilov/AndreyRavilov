@@ -247,6 +247,7 @@ function applyTime(p) {
   MATERIALS.window.emissiveIntensity = 0.3 + p * 1.3;
   MATERIALS.lamp.emissiveIntensity = 1 + p * 3;
   MATERIALS.pool.opacity = Math.max(0, Math.min(1, (p - 0.45) / 0.3)) * 0.22;
+  city.setHaloStrength(0.35 + Math.min(1, p * 1.3) * 0.65);
 }
 
 // ============ Состояние игры ============
