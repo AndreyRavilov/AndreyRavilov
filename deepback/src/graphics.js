@@ -42,11 +42,22 @@ export function createSkyMaterial(cloudTex) {
         // облака: проекция на купол
         if (uHasClouds > 0.5 && h > 0.0) {
           vec2 cuv = d.xz / (h + 0.12) * 0.22 + vec2(uTime * 0.003, uTime * 0.0015);
-          float n = texture2D(uClouds, cuv).r * 0.65 + texture2D(uClouds, cuv * 2.7 + 0.37).r * 0.35;
-          float cl = smoothstep(0.62 - uCover * 0.35, 0.78 - uCover * 0.3, n) * smoothstep(0.0, 0.18, h);
-          vec3 lit = mix(horizon * 1.05 + 0.06, uSunColor * 0.9 + horizon * 0.3, pow(sd, 3.0) * above);
-          vec3 cc = mix(lit, lit * 0.45, uCloudDark);
-          c = mix(c, cc, cl * 0.88);
+          float n = texture2D(uClouds, cuv).r * 0.6 + texture2D(uClouds, cuv * 2.7 + 0.37).r * 0.3 + texture2D(uClouds, cuv * 7.1 + 0.71).r * 0.1;
+          float lo = 0.62 - uCover * 0.35;
+          float cl = smoothstep(lo, 0.78 - uCover * 0.3, n) * smoothstep(0.0, 0.18, h);
+          // объём: плотность чуть ближе к солнцу — если там облако гуще, эта точка в его тени
+          vec2 toSun = normalize(s.xz + 1e-4) * 0.035;
+          float nS = texture2D(uClouds, cuv + toSun).r * 0.6 + texture2D(uClouds, (cuv + toSun) * 2.7 + 0.37).r * 0.3 + texture2D(uClouds, (cuv + toSun) * 7.1 + 0.71).r * 0.1;
+          float shade = clamp((nS - n) * 6.0 + 0.5, 0.0, 1.0); // 1 — в тени, 0 — освещённый край
+          float thick = smoothstep(lo, lo + 0.3, n); // толща облака: подбрюшье темнее
+          vec3 sunLit = uSunColor * (0.75 + 0.35 * above) + horizon * 0.25;
+          vec3 bright = mix(horizon * 1.05 + 0.08, sunLit, 0.55 + 0.45 * pow(sd, 3.0)) ;
+          vec3 dark = mix(horizon, top, 0.35) * 0.62;
+          vec3 cc = mix(bright, dark, clamp(shade * 0.65 + thick * 0.35, 0.0, 1.0));
+          // серебристая кайма у облаков рядом с солнцем
+          cc += uSunColor * pow(sd, 12.0) * (1.0 - thick) * 0.8 * above;
+          cc = mix(cc, cc * 0.45, uCloudDark);
+          c = mix(c, cc, cl * 0.9);
         }
         // луна — напротив солнца, видна после заката
         vec3 m = normalize(vec3(-s.x, abs(s.y) * 0.8 + 0.25, -s.z));
