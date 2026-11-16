@@ -59,3 +59,9 @@ export function comboStep(combo, sinceLast) {
   const finisher = n >= 3;
   return { combo: finisher ? 0 : n, finisher, bonus: finisher ? 1 : 0 };
 }
+
+// Бросок гарпуна на тросе: дальний удар, цель — в узком конусе взгляда камеры
+export const THROW = { range: 14, cone: Math.cos((28 * Math.PI) / 180), speed: 32, back: 40, cd: [3, 2.4, 1.8] };
+export function throwTarget(from, dir, enemies) {
+  return pickTarget(from, [dir], enemies, THROW.range, { cosCone: THROW.cone, close: 0, dy: 4 });
+}

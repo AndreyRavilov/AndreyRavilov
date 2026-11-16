@@ -806,6 +806,32 @@ test('бой: гарпун попадает по пиявке сбоку, у в�
   assert.deepEqual(page.errors, []);
 });
 
+test('гарпун на тросе (T): ранит пиявку издалека, подтягивает её и возвращается', async (t) => {
+  const page = await openGame(env); t.after(() => page.context().close().catch(() => {}));
+  await startNewRun(page);
+  await game(page, () => {
+    const d = window.__deepback;
+    d.S.cycle = 3;
+    d.startDay();
+    const L = d.city.leeches[0];
+    L.cool = 99;
+    window.__L = L;
+    // встаём в 9 м от пиявки и смотрим на неё
+    const ang = Math.atan2(-(L.x - (L.x + 9)), -(L.z - L.z));
+    d.player.pos.set(L.x + 9, L.mesh.position.y, L.z);
+    d.player.vel.set(0, 0, 0);
+    d.setYaw(ang);
+  });
+  const hp0 = await game(page, () => window.__L.hp);
+  await game(page, () => window.__deepback.throwHarpoon());
+  assert.ok(await game(page, () => window.__deepback.thrown.phase === 'out' && !!window.__deepback.thrown.tgt));
+  await waitFor(page, () => window.__L.hp < 3 || window.__L.dead);
+  assert.ok(await game(page, () => window.__L.hp) < hp0);
+  // гарпун вернулся в руку, трос спрятан
+  await waitFor(page, () => window.__deepback.thrown.phase === null && !window.__deepback.thrown.rope.visible);
+  assert.deepEqual(page.errors, []);
+});
+
 test('рывок (V): бросок вперёд и неуязвимость к укусу на долю секунды', async (t) => {
   const page = await openGame(env); t.after(() => page.context().close().catch(() => {}));
   await startNewRun(page);

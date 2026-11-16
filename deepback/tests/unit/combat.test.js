@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { pickTarget, weaponDamage, damage, regen, ENEMY_HP, REGEN_DELAY, comboStep, COMBO_WINDOW } from '../../src/combat.js';
+import { pickTarget, weaponDamage, damage, regen, ENEMY_HP, REGEN_DELAY, comboStep, COMBO_WINDOW, throwTarget, THROW } from '../../src/combat.js';
 
 const fwd = [{ x: 0, z: -1 }];
 
@@ -57,4 +57,12 @@ test('серия: третье попадание подряд — добива�
   assert.equal(c.bonus, 1);
   assert.equal(c.combo, 0);
   assert.equal(comboStep(2, COMBO_WINDOW + 0.1).finisher, false);
+});
+
+test('гарпун на тросе: достаёт врага далеко впереди, но не сбоку', () => {
+  const from = { x: 0, y: 0, z: 0 };
+  const dir = { x: 0, z: -1 };
+  assert.equal(throwTarget(from, dir, [{ id: 'far', x: 1, y: 0, z: -11 }]).id, 'far');
+  assert.equal(throwTarget(from, dir, [{ id: 'side', x: 3, y: 0, z: 0 }]), null);
+  assert.equal(throwTarget(from, dir, [{ id: 'toofar', x: 0, y: 0, z: -THROW.range - 1 }]), null);
 });

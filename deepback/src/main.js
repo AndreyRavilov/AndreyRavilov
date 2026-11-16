@@ -332,8 +332,14 @@ canvas.addEventListener('mousedown', (e) => {
     useHeld();
     return;
   }
+  // правая кнопка — метнуть гарпун на тросе
+  if (e.button === 2 && document.pointerLockElement === canvas && (S.mode === 'day' || S.mode === 'closing') && !S.paused) {
+    throwHarpoon();
+    return;
+  }
   if (S.mode === 'day' || S.mode === 'closing' || S.mode === 'ark') lockPointer();
 });
+canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 addEventListener('mouseup', () => (dragging = false));
 addEventListener('mousemove', (e) => {
   if (document.pointerLockElement === canvas || dragging) {
@@ -509,6 +515,7 @@ function updateHud() {
   const A = S.arms;
   const inHand = S.held ? ` · в руке: <b>${S.held === 'spear' ? (A.spear ? 'острога' : 'гарпун') : HELD_NAMES[S.held]}</b>` : '';
   $('weapons').innerHTML = `<span class="lbl">F</span> ${A.spear ? 'острога' : 'гарпун'}` +
+    ` · <span class="lbl">T</span> <span style="opacity:${S.throwCd > 0 ? 0.4 : 1}">трос</span>` +
     (A.bombs ? ` · <span class="lbl">G</span> соль ×${A.bombs}` : '') +
     (A.flare ? ` · <span class="lbl">Q</span> ракетница ${A.flareReady ? '✓' : '—'}` : '') + inHand;
   $('cargo').innerHTML = `<span class="lbl">Груз ${w}/${player.capacity}</span> ` + (player.carried.map((t) => `<span class="it ${t}">${ITEM[t].icon}</span>`).join('') || '<span class="empty">пусто</span>');
@@ -2440,6 +2447,108 @@ const HARPOON_CD = [1.6, 1.1, 0.7];
 function updateHarpoon(dt) {
   S.harpoonCd -= dt;
   if (pressed.has('KeyF')) strike();
+  if (pressed.has('KeyT')) throwHarpoon();
+  updateThrow(dt);
+}
+
+// ---- Гарпун на тросе: летит к цели, бьёт, подтягивает пиявку и возвращается в руку ----
+const thrown = (() => {
+  const g = new THREE.Group();
+  const brass = new THREE.MeshStandardMaterial({ color: 0xb08a3e, metalness: 0.8, roughness: 0.35 });
+  const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 1.6, 6), brass);
+  shaft.rotation.x = Math.PI / 2;
+  g.add(shaft);
+  const tip = new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.35, 6), new THREE.MeshStandardMaterial({ color: 0xdfe8ea, metalness: 0.9, roughness: 0.2 }));
+  tip.rotation.x = -Math.PI / 2;
+  tip.position.z = -0.95;
+  g.add(tip);
+  g.visible = false;
+  scene.add(g);
+  const ropeGeo = new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(3 * 12), 3));
+  const rope = new THREE.Line(ropeGeo, new THREE.LineBasicMaterial({ color: 0x8a7a5a }));
+  rope.frustumCulled = false;
+  rope.visible = false;
+  scene.add(rope);
+  return { g, rope, phase: null, pos: new THREE.Vector3(), aim: new THREE.Vector3(), tgt: null };
+})();
+
+function throwHarpoon() {
+  if (thrown.phase || (S.throwCd || 0) > 0) return;
+  const lvl = S.up.harpoon || 0;
+  S.throwCd = COMBAT.THROW.cd[lvl];
+  player.swing = 0.35;
+  player.swingHit = false;
+  const camDir = { x: -Math.sin(yaw), z: -Math.cos(yaw) };
+  const enemies = [];
+  for (const L of city.leeches) if (!L.dead) enemies.push({ x: L.x, y: L.mesh.position.y + 0.3, z: L.z, ref: L, kind: 'leech' });
+  for (const D of deeplings) if (D.active) enemies.push({ x: D.pos.x, y: D.pos.y, z: D.pos.z, ref: D, kind: 'deepling' });
+  const tgt = COMBAT.throwTarget(player.pos, camDir, enemies);
+  thrown.tgt = tgt;
+  thrown.pos.set(player.pos.x, player.pos.y + 1.3, player.pos.z);
+  if (tgt) thrown.aim.set(tgt.x, tgt.y + 0.3, tgt.z);
+  else thrown.aim.set(player.pos.x + camDir.x * COMBAT.THROW.range, player.pos.y + 1.3 - Math.sin(pitch) * 4, player.pos.z + camDir.z * COMBAT.THROW.range);
+  const face = Math.atan2(-(thrown.aim.x - player.pos.x), -(thrown.aim.z - player.pos.z));
+  player.facing = face;
+  player.mesh.rotation.y = face;
+  thrown.phase = 'out';
+  thrown.g.visible = thrown.rope.visible = true;
+  audio.tone({ type: 'sawtooth', f0: 900, f1: 260, dur: 0.25, vol: 0.06, lp: 2400 });
+}
+
+function updateThrow(dt) {
+  S.throwCd = Math.max(0, (S.throwCd || 0) - dt);
+  if (!thrown.phase) return;
+  const hand = new THREE.Vector3(player.pos.x, player.pos.y + 1.3, player.pos.z);
+  // цель движется — гарпун доводится к ней
+  const t = thrown.tgt;
+  if (thrown.phase === 'out' && t) {
+    if (t.kind === 'leech' && !t.ref.dead) thrown.aim.set(t.ref.x, t.ref.mesh.position.y + 0.4, t.ref.z);
+    if (t.kind === 'deepling' && t.ref.active) thrown.aim.copy(t.ref.pos);
+  }
+  const goal = thrown.phase === 'out' ? thrown.aim : hand;
+  const to = goal.clone().sub(thrown.pos);
+  const d = to.length();
+  const step = (thrown.phase === 'out' ? COMBAT.THROW.speed : COMBAT.THROW.back) * dt;
+  if (d <= step + 0.05) {
+    thrown.pos.copy(goal);
+    if (thrown.phase === 'out') {
+      thrown.phase = 'back';
+      if (t && !(t.kind === 'leech' && t.ref.dead) && !(t.kind === 'deepling' && !t.ref.active)) {
+        const dmg = COMBAT.weaponDamage('spear', { spear: S.arms.spear, harpoonLvl: S.up.harpoon || 0 });
+        hitEnemy(t.ref, t.kind, dmg);
+        audio.hit();
+        S.hitStop = 0.05;
+        // трос подтягивает пиявку к ныряльщику — добить её вблизи
+        if (t.kind === 'leech' && !t.ref.dead) {
+          const dx = player.pos.x - t.ref.x;
+          const dz = player.pos.z - t.ref.z;
+          const dl = Math.hypot(dx, dz) || 1;
+          t.ref.push = { x: dx / dl, z: dz / dl, t: 0.5 };
+        }
+      } else {
+        for (let i = 0; i < 5; i++) ambient.spray.spawn(thrown.pos.x, thrown.pos.y, thrown.pos.z, (Math.random() - 0.5) * 2, 1 + Math.random(), (Math.random() - 0.5) * 2, 0.5, 0.15);
+      }
+    } else {
+      thrown.phase = null;
+      thrown.g.visible = thrown.rope.visible = false;
+      return;
+    }
+  } else {
+    thrown.pos.addScaledVector(to, step / d);
+  }
+  thrown.g.position.copy(thrown.pos);
+  // остриё — вперёд по полёту; на обратном пути гарпун тянется за тросом остриём от руки
+  thrown.g.lookAt(thrown.phase === 'out' ? goal : thrown.pos.clone().multiplyScalar(2).sub(hand));
+  thrown.g.rotateY(Math.PI);
+  // трос провисает между рукой и гарпуном
+  const arr = thrown.rope.geometry.attributes.position;
+  const len = hand.distanceTo(thrown.pos);
+  for (let i = 0; i < 12; i++) {
+    const k = i / 11;
+    const sag = Math.sin(k * Math.PI) * Math.min(1.2, len * 0.06) * (thrown.phase === 'back' ? 1.6 : 1);
+    arr.setXYZ(i, hand.x + (thrown.pos.x - hand.x) * k, hand.y + (thrown.pos.y - hand.y) * k - sag, hand.z + (thrown.pos.z - hand.z) * k);
+  }
+  arr.needsUpdate = true;
 }
 
 // Удар гарпуном / острогой
@@ -3022,7 +3131,7 @@ $('coop-btn').addEventListener('click', () => {
 });
 
 // для фона меню и для автотестов
-window.__deepback = { coop, schools, updateDash: (dt) => updateDash(dt), hurtPlayer: (a, w) => hurtPlayer(a, w), COMBAT, thief, strike: () => strike(), castaway, ach, giant, playOutro: (e) => playOutro(e), get outro() { return outro; }, traderBoat, openTrader: () => openTrader(), strikeBolt: () => strikeBolt(), get bolt() { return bolt; }, showArmsHint, planShot: (s) => planShot(s), cameraRoomy: (c, r) => cameraRoomy(c, r), ark, enterArk, killLeech, lineClear: (...a) => lineClear(...a), introPoint: (s) => introPoint(s), S, sky, envScene, whale, ambient, scene, post, voice, intro, startIntro, endIntro, player, city, ocean, deeplings, rain, navDots, startRun, startDay, endDay, keys, pressed, setYaw: (v) => (yaw = v) };
+window.__deepback = { throwHarpoon: () => throwHarpoon(), get thrown() { return thrown; }, coop, schools, updateDash: (dt) => updateDash(dt), hurtPlayer: (a, w) => hurtPlayer(a, w), COMBAT, thief, strike: () => strike(), castaway, ach, giant, playOutro: (e) => playOutro(e), get outro() { return outro; }, traderBoat, openTrader: () => openTrader(), strikeBolt: () => strikeBolt(), get bolt() { return bolt; }, showArmsHint, planShot: (s) => planShot(s), cameraRoomy: (c, r) => cameraRoomy(c, r), ark, enterArk, killLeech, lineClear: (...a) => lineClear(...a), introPoint: (s) => introPoint(s), S, sky, envScene, whale, ambient, scene, post, voice, intro, startIntro, endIntro, player, city, ocean, deeplings, rain, navDots, startRun, startDay, endDay, keys, pressed, setYaw: (v) => (yaw = v) };
 
 // ============ Цикл ============
 const clock = new THREE.Clock();
