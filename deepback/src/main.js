@@ -2448,6 +2448,7 @@ function strike() {
   const lvl = S.up.harpoon || 0;
   S.harpoonCd = HARPOON_CD[lvl];
   player.swing = 0.35;
+  player.swingHit = false;
   audio.tone({ type: 'triangle', f0: 300, f1: 120, dur: 0.18, vol: 0.12 });
   const range = 3.8 + lvl * 0.8;
   // кандидаты: живые пиявки и глубинники рядом; цель — ближайшая перед ныряльщиком
@@ -2463,8 +2464,19 @@ function strike() {
     const face = Math.atan2(-(tgt.x - player.pos.x), -(tgt.z - player.pos.z));
     player.facing = face;
     player.mesh.rotation.y = face;
-    const dmg = COMBAT.weaponDamage('spear', { spear: S.arms.spear, harpoonLvl: lvl });
+    const c = COMBAT.comboStep(S.combo || 0, S.time - (S.lastHitT ?? -99));
+    S.combo = c.combo;
+    S.lastHitT = S.time;
+    const dmg = COMBAT.weaponDamage('spear', { spear: S.arms.spear, harpoonLvl: lvl }) + c.bonus;
+    if (c.finisher) {
+      floatNumber(tgt.x, tgt.y + 2.2, tgt.z, 'добивание!', 'combo');
+      audio.tone({ type: 'square', f0: 520, f1: 180, dur: 0.22, vol: 0.1, lp: 1800 });
+    }
     hitEnemy(tgt.ref, tgt.kind, dmg);
+    // ощущение попадания: кадр на миг замирает, камеру встряхивает
+    S.hitStop = c.finisher ? 0.11 : 0.06;
+    S.shake = Math.max(S.shake || 0, c.finisher ? 0.35 : 0.18);
+    if (c.finisher && tgt.kind === 'leech' && tgt.ref.push) tgt.ref.push.t = 0.6;
     hit++;
   } else {
     player.facing = yaw;
@@ -2476,6 +2488,7 @@ function strike() {
     hit++;
   }
   if (hit) audio.hit();
+  player.swingHit = hit > 0;
 }
 
 // Попадание по врагу: урон, отдача, цифра урона, смерть
@@ -3034,9 +3047,18 @@ function frame() {
   } else if (S.mode === 'outro') {
     updateOutro(dt);
   } else if ((S.mode === 'day' || S.mode === 'closing') && !S.paused) {
+    // остановка кадра при попадании: мир на мгновение почти замирает
+    const gdt = S.hitStop > 0 ? dt * 0.1 : dt;
+    S.hitStop = Math.max(0, (S.hitStop || 0) - dt);
     if (pressed.has('KeyJ')) showJournal();
-    else updateGame(dt);
+    else updateGame(gdt);
     updateCamera(dt);
+    if (S.shake > 0) {
+      const a = S.shake * S.shake;
+      camera.position.x += (Math.random() - 0.5) * a;
+      camera.position.y += (Math.random() - 0.5) * a;
+      S.shake = Math.max(0, S.shake - dt * 1.6);
+    }
     updateHud();
   } else if (S.mode === 'ark' && !S.paused) {
     updateArk(dt);

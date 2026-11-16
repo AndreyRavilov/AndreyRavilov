@@ -50,3 +50,12 @@ export function regen(hp, sinceHurt, dt, max = PLAYER_HP) {
   if (sinceHurt < REGEN_DELAY || hp >= max) return hp;
   return Math.min(max, hp + REGEN_PER_SEC * dt);
 }
+
+// Серия ударов: попадания чаще, чем раз в COMBO_WINDOW секунд, копятся;
+// третье подряд — добивание: +1 к урону и отбрасывание сильнее
+export const COMBO_WINDOW = 1.3;
+export function comboStep(combo, sinceLast) {
+  const n = sinceLast <= COMBO_WINDOW ? combo + 1 : 1;
+  const finisher = n >= 3;
+  return { combo: finisher ? 0 : n, finisher, bonus: finisher ? 1 : 0 };
+}

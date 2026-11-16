@@ -163,6 +163,28 @@ export class Player {
     pole.visible = false;
     g.add(pole);
     this.pole = pole;
+    // след выпада: светлый клин воздуха (под водой — пузырчатый) перед ныряльщиком
+    const trailGeo = new THREE.PlaneGeometry(0.5, 2.6);
+    trailGeo.rotateX(-Math.PI / 2);
+    trailGeo.translate(0, 0, -1.9);
+    const trailMat = new THREE.MeshBasicMaterial({ color: 0xe8fbff, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
+    if (typeof document !== 'undefined') {
+      // клин: острый спереди, широкий у руки, мягкие края
+      const c = document.createElement('canvas');
+      c.width = 32; c.height = 128;
+      const x = c.getContext('2d');
+      const grd = x.createLinearGradient(0, 0, 0, 128);
+      grd.addColorStop(0, 'rgba(255,255,255,0)');
+      grd.addColorStop(0.35, 'rgba(255,255,255,0.9)');
+      grd.addColorStop(1, 'rgba(255,255,255,0)');
+      x.fillStyle = grd;
+      x.beginPath(); x.moveTo(16, 0); x.lineTo(30, 128); x.lineTo(2, 128); x.closePath(); x.fill();
+      trailMat.map = new THREE.CanvasTexture(c);
+    }
+    this.trail = new THREE.Mesh(trailGeo, trailMat);
+    this.trail.position.set(0.3, 1.1, 0);
+    this.trail.renderOrder = 5;
+    g.add(this.trail);
 
     // что в руке: бомба или ракетница (острога/гарпун — это pole)
     this.held = null;
@@ -200,6 +222,7 @@ export class Player {
     mergeChildren(head);
     for (const part of [...this.arms, ...this.legs]) mergeChildren(part);
     g.traverse((c) => c.isMesh && (c.castShadow = true));
+    this.trail.castShadow = false;
     return g;
   }
 
@@ -388,14 +411,18 @@ export class Player {
       const k = Math.sin(Math.max(0, this.swing) / 0.35 * Math.PI);
       this.pole.visible = true;
       this.pole.position.z = -k * 0.9;
+      this.trail.material.opacity = k * (this.swingHit ? 0.75 : 0.4);
+      this.trail.scale.set(1 + k * 0.6, 1, 0.4 + k * 0.8);
+      if (this.arms) this.arms[1].rotation.x = -0.6 - k * 0.9; // рука выбрасывается вперёд
     } else {
       // острога в руке — шест виден и в покое
       this.pole.visible = this.held === 'spear';
       this.pole.position.z = 0;
+      this.trail.material.opacity = 0;
     }
     this.handBomb.visible = this.held === 'bombs';
     this.flareGun.visible = this.held === 'flare';
-    if (this.held && this.arms) this.arms[1].rotation.x = -0.6; // правая рука вперёд
+    if (this.held && this.arms && !(this.swing > 0)) this.arms[1].rotation.x = -0.6; // правая рука вперёд
   }
 }
 

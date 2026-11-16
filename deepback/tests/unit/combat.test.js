@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { pickTarget, weaponDamage, damage, regen, ENEMY_HP, REGEN_DELAY } from '../../src/combat.js';
+import { pickTarget, weaponDamage, damage, regen, ENEMY_HP, REGEN_DELAY, comboStep, COMBO_WINDOW } from '../../src/combat.js';
 
 const fwd = [{ x: 0, z: -1 }];
 
@@ -44,4 +44,17 @@ test('здоровье восстанавливается только посл�
   assert.equal(regen(50, REGEN_DELAY - 1, 1), 50);
   assert.ok(regen(50, REGEN_DELAY + 1, 1) > 50);
   assert.equal(regen(100, 99, 1), 100);
+});
+
+test('серия: третье попадание подряд — добивание с бонусом, пауза сбрасывает счёт', () => {
+  let c = comboStep(0, 99);
+  assert.equal(c.combo, 1);
+  c = comboStep(c.combo, 0.5);
+  assert.equal(c.combo, 2);
+  assert.equal(c.finisher, false);
+  c = comboStep(c.combo, 0.5);
+  assert.equal(c.finisher, true);
+  assert.equal(c.bonus, 1);
+  assert.equal(c.combo, 0);
+  assert.equal(comboStep(2, COMBO_WINDOW + 0.1).finisher, false);
 });
