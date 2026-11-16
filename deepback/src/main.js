@@ -1134,6 +1134,7 @@ function updateGame(dt) {
   }
 
   schools.update(dt, S.time, ocean.level, ocean.amp);
+  updateWakes(dt);
   if (giant.update(dt, ocean.level, S.mode === 'day' && S.weather !== 'fog')) {
     audio.moan(0.35);
     if (!S.sawGiant) {
@@ -1343,6 +1344,49 @@ function updateSplashes(dt) {
   }
   splashes.instanceMatrix.needsUpdate = true;
   if (splashes.instanceColor) splashes.instanceColor.needsUpdate = true;
+}
+
+// Круги на воде от ныряльщика: бредёт по мелководью или плывёт у поверхности
+const WAKE_N = 28;
+const wakes = new THREE.InstancedMesh(
+  new THREE.RingGeometry(0.82, 1, 24).rotateX(-Math.PI / 2),
+  new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }),
+  WAKE_N,
+);
+wakes.frustumCulled = false;
+wakes.count = WAKE_N;
+scene.add(wakes);
+const wakeLife = new Float32Array(WAKE_N);
+const wakePos = new Float32Array(WAKE_N * 3);
+let wakeNext = 0;
+let wakeT = 0;
+function updateWakes(dt) {
+  const surf = ocean.surfaceAt(player.pos.x, player.pos.z);
+  const depth = surf - player.pos.y; // >0 — ноги в воде
+  const speed = Math.hypot(player.vel.x, player.vel.z);
+  const atSurface = depth > 0.15 && depth < 2.4; // бредёт или плывёт, голова над водой
+  wakeT -= dt;
+  if (atSurface && speed > 1 && wakeT <= 0) {
+    wakeT = 0.16;
+    const i = wakeNext++ % WAKE_N;
+    wakeLife[i] = 1;
+    wakePos[i * 3] = player.pos.x - player.vel.x * 0.05;
+    wakePos[i * 3 + 1] = surf + 0.03;
+    wakePos[i * 3 + 2] = player.pos.z - player.vel.z * 0.05;
+    if (Math.random() < 0.5) ambient.spray.spawn(player.pos.x, surf + 0.1, player.pos.z, (Math.random() - 0.5) * 2, 1 + Math.random() * 1.5, (Math.random() - 0.5) * 2, 0.6, 0.12);
+  }
+  // освещение кругов: ночью тусклее
+  const light = 0.25 + 0.75 * Math.max(0, Math.min(1, sunDir.y * 4 + 0.3));
+  for (let i = 0; i < WAKE_N; i++) {
+    if (wakeLife[i] > 0) wakeLife[i] -= dt * 0.8;
+    const k = Math.max(0, wakeLife[i]);
+    const size = 0.3 + (1 - k) * 1.6;
+    splashM.makeScale(size, 1, size).setPosition(wakePos[i * 3], k > 0 ? ocean.surfaceAt(wakePos[i * 3], wakePos[i * 3 + 2]) + 0.03 : -9999, wakePos[i * 3 + 2]);
+    wakes.setMatrixAt(i, splashM);
+    wakes.setColorAt(i, splashC.setScalar(k * 0.45 * light));
+  }
+  wakes.instanceMatrix.needsUpdate = true;
+  if (wakes.instanceColor) wakes.instanceColor.needsUpdate = true;
 }
 
 // Молния: ломаный канал с ответвлениями бьёт в море в 150–400 м от игрока

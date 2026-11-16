@@ -96,7 +96,8 @@ void main() {
   vec2 gu = vec2(2.0 * vWorld.x / (ax * ax), 2.0 * zn / uWhale.y);
   float slope = uWhale.z / (2.0 * sq) * length(gu);
   float dist = abs(over) / max(slope, 0.02);
-  float shore = u < 1.08 ? smoothstep(1.6, 0.0, dist) * (0.55 + 0.45 * smoothstep(0.35, 0.6, fn)) : 0.0;
+  // узкая рваная кромка: ширина не больше метра, плотнее у самой воды, края растворяются в ряби
+  float shore = smoothstep(1.1, 0.0, dist) * smoothstep(1.12, 1.0, u) * smoothstep(0.3, 0.7, fn + smoothstep(0.6, 0.0, dist) * 0.4) * 0.8;
   float crest = smoothstep(0.78, 0.95, h1 + (vNormalW.y < 0.985 ? 0.1 : 0.0)) * 0.25;
   // пенные полосы по ветру: тянутся вдоль x, рвутся мелким шумом
   float sn = detail(vec2(vWorld.x * 0.01, vWorld.z * 0.05) + vec2(uTime * 0.01, 0.0));
