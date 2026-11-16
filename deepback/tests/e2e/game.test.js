@@ -368,7 +368,7 @@ test('ролик можно пропустить пробелом и перес�
   await waitFor(page, () => window.__deepback.S.mode === 'day');
 });
 
-test('мини-карта нарисована, у неё есть легенда, M её прячет', async (t) => {
+test('мини-карта нарисована, у неё есть легенда, M прячет легенду и карту', async (t) => {
   // тяжёлый тест (чтение пикселей холста) — в свежем браузере
   const page = await openGame(env, { viewport: { width: 960, height: 540 }, freshBrowser: true }); t.after(() => page.context().close().catch(() => {}));
   await startNewRun(page);
@@ -389,10 +389,13 @@ test('мини-карта нарисована, у неё есть легенд�
     if (colors < 6) await page.waitForTimeout(250);
   }
   assert.ok(colors >= 6, `на мини-карте слишком мало цветов: ${colors}`);
+  // M: сначала прячет легенду, потом всю карту, потом возвращает обе
+  await page.keyboard.press('KeyM');
+  await waitFor(page, () => getComputedStyle(document.getElementById('legend')).display === 'none' && getComputedStyle(document.getElementById('map')).display !== 'none');
   await page.keyboard.press('KeyM');
   await waitFor(page, () => getComputedStyle(document.getElementById('map')).display === 'none');
   await page.keyboard.press('KeyM');
-  await waitFor(page, () => getComputedStyle(document.getElementById('map')).display !== 'none');
+  await waitFor(page, () => getComputedStyle(document.getElementById('map')).display !== 'none' && getComputedStyle(document.getElementById('legend')).display !== 'none');
 });
 
 test('навигатор: пунктир ведёт к цели, Tab меняет цель, к вечеру зовёт в Ковчег', async (t) => {

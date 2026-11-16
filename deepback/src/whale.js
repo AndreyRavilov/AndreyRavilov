@@ -234,7 +234,8 @@ export function buildWhale() {
     pudGeo.rotateX(-Math.PI / 2);
   }
   const pudMat = new THREE.MeshStandardMaterial({
-    color: 0x0e171a, roughness: 0.03, metalness: 0.0, envMapIntensity: 1.6, transparent: true, opacity: 0.93,
+    // лужа зеркалит небо: металличность даёт отражение, тёмный цвет — глубину воды
+    color: 0x3d4c55, roughness: 0.05, metalness: 0.75, envMapIntensity: 1.1, transparent: true, opacity: 0.9,
     polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
   });
   const pudN = 90;

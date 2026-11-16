@@ -293,7 +293,18 @@ export function addCaustics(mat, { wet = false } = {}) {
         // мокрая полоса у кромки воды: темнее и с бликом
         float aboveW = vWPosC.y - uLevel;
         float wetK = aboveW > -0.2 ? 1.0 - smoothstep(0.0, 2.4, aboveW) : 0.0;
-        diffuseColor.rgb *= mix(1.0, 0.62, wetK);` : '#include <color_fragment>')
+        diffuseColor.rgb *= mix(1.0, 0.62, wetK);
+        #ifdef USE_MAP
+        // крупные пятна поверх мелкой текстуры: та же шкура, взятая в огромном масштабе
+        // и повёрнутая — повтор плитки издалека больше не читается как асфальт
+        vec2 mUv = vWPosC.xz * 0.011;
+        float m1 = dot(texture2D(map, mUv).rgb, vec3(0.33));
+        float m2 = dot(texture2D(map, mat2(0.8, -0.6, 0.6, 0.8) * vWPosC.xz * 0.027 + 0.37).rgb, vec3(0.33));
+        float macro = clamp((m1 * 0.6 + m2 * 0.4 - 0.36) * 3.2, -1.0, 1.0);
+        diffuseColor.rgb *= 1.0 + macro * 0.42;
+        // тёплые бурые разводы и холодный сланец сменяют друг друга
+        diffuseColor.rgb *= mix(vec3(0.92, 0.97, 1.04), vec3(1.08, 1.0, 0.9), smoothstep(-0.3, 0.5, m2 * 3.0 - m1 * 2.2));
+        #endif` : '#include <color_fragment>')
       .replace('#include <roughnessmap_fragment>', wet ? `#include <roughnessmap_fragment>
         roughnessFactor *= mix(1.0, 0.3, wetK);` : '#include <roughnessmap_fragment>')
       .replace('#include <dithering_fragment>', `#include <dithering_fragment>

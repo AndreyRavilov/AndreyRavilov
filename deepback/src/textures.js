@@ -42,11 +42,23 @@ function canvas(size) {
   return c;
 }
 
+// Анизотропная фильтрация: без неё земля под косым взглядом камеры размывается в ровную кашу
+let ANISO = 4;
+const made = [];
+export function setAnisotropy(n) {
+  ANISO = n;
+  for (const t of made) {
+    t.anisotropy = n;
+    t.needsUpdate = true;
+  }
+}
+
 function finish(c, repeat = 1, srgb = true) {
   const t = new THREE.CanvasTexture(c);
   t.wrapS = t.wrapT = THREE.RepeatWrapping;
   t.repeat.set(repeat, repeat);
-  t.anisotropy = 4;
+  t.anisotropy = ANISO;
+  made.push(t);
   if (srgb) t.colorSpace = THREE.SRGBColorSpace;
   return t;
 }

@@ -59,6 +59,7 @@
   #navline b { color: var(--accent); }
   #navline kbd { font-family: inherit; font-size: 10px; border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; color: var(--muted); }
   #hud.nomap #map { display: none; }
+  #hud.nolegend #legend { display: none; }
   #hud.nomap #navline { bottom: 14px; }
   #toasts { position: absolute; top: 110px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; gap: 6px; align-items: center; width: min(92vw, 560px); }
   .toast { background: var(--panel); border: 1px solid var(--line); padding: 8px 14px; border-radius: 10px; font-size: 14px; text-align: center; transition: opacity .6s, transform .6s; }
@@ -309,7 +310,7 @@
       <kbd>Q</kbd><span>ракетница, раз в день (купить у Брана)</span>
       <kbd>R</kbd><span>у шлюза: укрыться и закончить день</span>
       <kbd>Tab</kbd><span>навигатор: сменить цель пунктира</span>
-      <kbd>M</kbd><span>скрыть / показать мини-карту</span>
+      <kbd>M</kbd><span>мини-карта: с легендой / без / скрыть</span>
       <kbd>J</kbd><span>журнал и достижения</span>
       <kbd>H</kbd><span>фото-режим: скрыть интерфейс</span>
     </div>

@@ -449,6 +449,7 @@ function autoQuality(dt) {
     fpsMeter.low = 0;
     post.setQuality(autoLevel, sun);
     whale.userData.setDetail?.(autoLevel);
+    applyAniso(autoLevel);
     toast(`Графика снижена до «${autoLevel === 'medium' ? 'среднего' : 'низкого'}» качества для плавности. Изменить — в паузе.`);
   }
 }
@@ -457,6 +458,11 @@ function autoQuality(dt) {
 const SETTINGS_KEY = 'deepback-settings-v1';
 const settings = { volume: 0.7, voice: 1, music: 0.5, sens: 1, invert: false, quality: 'auto', diff: 'normal' };
 try { Object.assign(settings, JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}')); } catch (e) { /* без сохранения */ }
+let anisoNow = 4;
+function applyAniso(level) {
+  const n = level === 'low' ? 4 : Math.min(level === 'high' ? 16 : 8, renderer.capabilities.getMaxAnisotropy());
+  if (n !== anisoNow) { anisoNow = n; TEX.setAnisotropy(n); }
+}
 function applySettings() {
   audio.setVolume(settings.volume);
   voice.setVolume(settings.voice);
@@ -475,6 +481,7 @@ function applySettings() {
   $('set-quality').value = settings.quality;
   if (post.level !== q) post.setQuality(q, sun);
   whale.userData.setDetail?.(q);
+  applyAniso(q);
   try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch (e) { /* ignore */ }
 }
 $('set-volume').addEventListener('input', (e) => { settings.volume = e.target.value / 100; applySettings(); });
@@ -593,6 +600,8 @@ function setRegion(key) {
 }
 
 function startDay() {
+  // легенда мини-карты нужна в первые дни; потом только мешает обзору
+  if (!S.mapChosen) $('hud').classList.toggle('nolegend', S.cycle > 2);
   S.t = 0;
   S.closing = 0;
   S.blowTimer = 10 + Math.random() * 6;
@@ -1648,7 +1657,14 @@ function updateNavigator(dt) {
     S.navTimer = 0;
     toast(`Навигатор: ${NAV_MODES[S.navMode][1]}`);
   }
-  if (pressed.has('KeyM')) $('hud').classList.toggle('nomap');
+  if (pressed.has('KeyM')) {
+    // карта с легендой → только карта → ничего → снова с легендой
+    const h = $('hud').classList;
+    S.mapMode = ((S.mapMode ?? (h.contains('nolegend') ? 1 : 0)) + 1) % 3;
+    S.mapChosen = true;
+    h.toggle('nolegend', S.mapMode === 1);
+    h.toggle('nomap', S.mapMode === 2);
+  }
   // H — фото-режим: спрятать весь интерфейс
   if (pressed.has('KeyH')) {
     document.body.classList.toggle('photo');
