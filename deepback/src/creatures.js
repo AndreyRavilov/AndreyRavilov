@@ -132,6 +132,7 @@ export class Deepling {
     this.active = on;
     this.group.visible = on;
     if (on) {
+      this.hp = this.maxHp = 8;
       this.pos.set(Math.sin(this.angle) * (WHALE.a + 14), level - 6, Math.cos(this.angle) * (WHALE.b + 16));
       this.vel.set(0, 0, 0);
       this.cool = 0;

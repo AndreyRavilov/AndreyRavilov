@@ -159,7 +159,7 @@ test('пиявка срывает груз, гарпун (F) отбрасыва�
   await waitFor(page, () => window.__deepback.player.carried.length === 0);
 });
 
-test('глубинник кусает под водой и отнимает воздух', async (t) => {
+test('глубинник кусает под водой: отнимает здоровье и воздух', async (t) => {
   const page = await openGame(env); t.after(() => page.context().close().catch(() => {}));
   await startNewRun(page);
   await game(page, () => { const d = window.__deepback; d.S.cycle = 2; d.startDay(); });
@@ -171,7 +171,9 @@ test('глубинник кусает под водой и отнимает во
   });
   // ждём именно укуса: воздух под водой тратится и сам по себе
   await waitFor(page, () => /Глубинник укусил/.test(document.getElementById('toasts').textContent));
-  assert.ok(await game(page, () => window.__deepback.player.oxygen < 0.8));
+  assert.ok(await game(page, () => window.__deepback.player.oxygen < 0.9));
+  assert.ok(await game(page, () => window.__deepback.S.hp <= 100 - window.__deepback.COMBAT.BITE.deepling));
+  assert.ok(await page.isVisible('#hp'));
 });
 
 test('дыхало подбрасывает ныряльщика', async (t) => {
@@ -565,7 +567,11 @@ test('оружейная Брана: острога, солевые бомбы �
   await page.keyboard.press('KeyG');
   await waitFor(page, () => window.__deepback.city.leeches[0].dead);
   assert.equal(await game(page, () => window.__deepback.S.arms.bombs), 2);
-  // острога: удар вплотную убивает
+  // острога: два удара вплотную убивают (у пиявки 3 здоровья, острога бьёт на 2)
+  await aim(1, 2);
+  await page.keyboard.press('KeyF');
+  await waitFor(page, () => window.__deepback.city.leeches[1].hp === 1);
+  await game(page, () => { const d = window.__deepback; d.S.harpoonCd = 0; });
   await aim(1, 2);
   await page.keyboard.press('KeyF');
   await waitFor(page, () => window.__deepback.city.leeches[1].dead);
@@ -739,5 +745,58 @@ test('плот с выжившим: доплыть и забрать — жит�
   });
   await page.keyboard.press('KeyE');
   await waitFor(page, (n) => window.__deepback.S.pop === n + 1 && !window.__deepback.castaway.active, pop0);
+  assert.deepEqual(page.errors, []);
+});
+
+test('чайка-воришка: крадёт рыбу из груза, гарпун её отгоняет', async (t) => {
+  const page = await openGame(env); t.after(() => page.context().close().catch(() => {}));
+  await startNewRun(page);
+  await game(page, () => { const d = window.__deepback; d.S.cycle = 3; d.S.pop = 12; d.S.food = 9; d.S.fuel = 5; d.startDay(); d.S.weather = 'clear'; d.thief.reset(true); });
+  await pickUp(page, 'food');
+  // пике: не мешаем — рыба пропадает
+  // на сухом месте у шлюза (в воде чайка не нападает)
+  await toHatch(page);
+  await game(page, () => { window.__deepback.thief.cool = 0; });
+  await waitFor(page, () => window.__deepback.thief.state === 'dive');
+  await game(page, () => { window.__deepback.thief.t = 2.4; });
+  await waitFor(page, () => window.__deepback.thief.state === 'flee' && !window.__deepback.player.carried.includes('food'));
+  // второе пике: гарпун успевает
+  await game(page, () => { const d = window.__deepback; d.player.carried.push('food'); d.player.refreshPack(); d.thief.state = 'idle'; d.thief.cool = 0; });
+  await waitFor(page, () => window.__deepback.thief.state === 'dive');
+  const dbg = await game(page, () => { const d = window.__deepback; d.thief.t = 1.8; d.S.harpoonCd = 0; d.strike(); return { st: d.thief.state, dist: d.thief.pos.distanceTo(d.player.pos), carried: d.player.carried.slice() }; });
+  void dbg;
+  await waitFor(page, () => window.__deepback.thief.state === 'flee');
+  assert.ok(await game(page, () => window.__deepback.player.carried.includes('food')));
+  assert.deepEqual(page.errors, []);
+});
+
+test('бой: гарпун попадает по пиявке сбоку, у врага полоска здоровья, ранения ныряльщика и восстановление', async (t) => {
+  const page = await openGame(env); t.after(() => page.context().close().catch(() => {}));
+  await startNewRun(page);
+  await game(page, () => { const d = window.__deepback; d.S.cycle = 3; d.S.pop = 12; d.S.food = 9; d.S.fuel = 5; d.startDay(); });
+  // пиявка сбоку от взгляда камеры (раньше такой удар промахивался)
+  await game(page, () => {
+    const d = window.__deepback;
+    const L = d.city.leeches[0];
+    L.cool = 99;
+    d.setYaw(0);
+    d.player.pos.set(L.x - 2.2, L.mesh.position.y, L.z + 1.0);
+    d.player.vel.set(0, 0, 0);
+  });
+  await waitFor(page, () => document.querySelectorAll('#enemy-bars .ebar').length > 0);
+  for (let i = 0; i < 3; i++) {
+    await game(page, () => { const d = window.__deepback; d.S.harpoonCd = 0; d.city.leeches[0].push = null; const L = d.city.leeches[0]; d.player.pos.set(L.x - 2.2, L.mesh.position.y, L.z + 1.0); });
+    await page.keyboard.press('KeyF');
+    await waitFor(page, (n) => window.__deepback.city.leeches[0].hp <= 2 - n || window.__deepback.city.leeches[0].dead, i);
+  }
+  assert.ok(await game(page, () => window.__deepback.city.leeches[0].dead));
+  // ранение и восстановление после паузы
+  await game(page, () => window.__deepback.hurtPlayer(40, 'leech'));
+  assert.equal(await game(page, () => window.__deepback.S.hp), 60);
+  await game(page, () => { window.__deepback.S.hurtT = 30; });
+  await waitFor(page, () => window.__deepback.S.hp > 60);
+  // смертельная рана — без сознания, конец дня
+  await game(page, () => window.__deepback.hurtPlayer(200, 'deepling'));
+  await waitFor(page, () => /Глубинник изранил тебя/.test(document.getElementById('modal-body').textContent));
   assert.deepEqual(page.errors, []);
 });

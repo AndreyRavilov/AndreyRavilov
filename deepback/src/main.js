@@ -25,6 +25,8 @@ import { createCoop, RemoteDiver } from './coop.js';
 import { REGIONS, regionFor, buildRegion, animateRegion } from './regions.js';
 import { Schools } from './schools.js';
 import { DistantGiant } from './giant.js';
+import { ThiefGull } from './thief.js';
+import * as COMBAT from './combat.js';
 import { Castaway, castawayComes } from './castaway.js';
 import { TraderBoat, OFFERS, trade, traderComes } from './trader.js';
 import { Achievements, ACHIEVEMENTS } from './achievements.js';
@@ -115,6 +117,7 @@ function achieve(a) {
 }
 const traderBoat = new TraderBoat(scene);
 const giant = new DistantGiant(scene);
+const thief = new ThiefGull(scene);
 const castaway = new Castaway(scene);
 const schoolV = new THREE.Vector3();
 player.dress(DIVER_TEX.cloth, DIVER_TEX.patina);
@@ -292,6 +295,8 @@ const S = {
   alarms: {},
   stats: null,
   time: 0,
+  hp: 100,
+  hurtT: 99,
 };
 // Сложность: длина дня, ночной расход еды, лишние пиявки
 const DIFF = {
@@ -616,6 +621,9 @@ function startDay() {
   schools.reset(3 + (S.region === 'reef' ? 3 : 0), mulberry32(S.runSeed + S.cycle * 577));
   if (traderComes(S.runSeed, S.cycle) && !coop.isGuest) traderBoat.arrive(S.runSeed, S.cycle);
   else traderBoat.leave();
+  thief.reset(S.cycle >= 3 && S.weather !== 'storm');
+  S.hp = COMBAT.PLAYER_HP;
+  S.hurtT = 99;
   if (castawayComes(S.runSeed, S.cycle) && !coop.isGuest) castaway.arrive(S.runSeed, S.cycle);
   else castaway.leave();
   city.generate(S.runSeed + S.cycle * 1013, S.cycle, S.lore, LORE.length, { keepsake: S.quest?.kind === 'keepsake', extraFood: R.extraFood, extraScrap: R.extraScrap, extraLeeches: Math.max(0, (R.extraLeeches || 0) + diff().leeches) });
@@ -750,6 +758,7 @@ function endDay(outcome) {
   tutorialFinish();
   traderBoat.leave();
   castaway.leave();
+  thief.reset(false);
   if (coop.isGuest) {
     // ночь считает хост; гость ждёт его сводку в Ковчеге
     if (outcome === 'drowned') {
@@ -775,7 +784,9 @@ function endDay(outcome) {
     const lostNames = killResidents(1);
     S.pop = Math.max(0, S.pop - 1);
     if (lostNames.length) lines.push(`${lostNames[0]} ушёл искать тебя в воду и не вернулся.`);
-    lines.push(`Ты не успел к шлюзу. Утром тебя нашли без сознания на палубе.${lost ? ` Груз (${lost}) унесло течением.` : ''} Один из жителей погиб, пока искал тебя.`);
+    const why = S.wounded === 'deepling' ? 'Глубинник изранил тебя, ты потерял сознание в воде.' : S.wounded === 'leech' ? 'Пиявки изжалили тебя до беспамятства.' : 'Ты не успел к шлюзу.';
+    S.wounded = null;
+    lines.push(`${why} Утром тебя нашли без сознания на палубе.${lost ? ` Груз (${lost}) унесло течением.` : ''} Один из жителей погиб, пока искал тебя.`);
   } else {
     lines.push('Шлюз закрылся за твоей спиной. Мать уходит на глубину.');
   }
@@ -1169,6 +1180,15 @@ function updateGame(dt) {
   schools.update(dt, S.time, ocean.level, ocean.amp);
   updateWakes(dt);
   tutorialTick();
+  updateCombatUi(dt);
+  const tev = S.mode === 'day' ? thief.update(dt, player, (x, z) => { const b = backHeight(x, z); return isFinite(b) ? city.groundAt(x, z, b + 0.4) : ocean.surfaceAt(x, z); }, S.time) : null;
+  if (tev === 'warn') {
+    audio.tone({ type: 'sawtooth', f0: 1400, f1: 900, dur: 0.35, vol: 0.06, lp: 3000 });
+    setTimeout(() => audio.tone({ type: 'sawtooth', f0: 1500, f1: 1000, dur: 0.3, vol: 0.05, lp: 3000 }), 300);
+    toast('Чайка пикирует на твою рыбу! Отгони её гарпуном — F!', 'warn');
+  } else if (tev === 'steal') {
+    toast('Чайка утащила рыбу из груза.', 'danger');
+  }
   updateThreat();
   if (giant.update(dt, ocean.level, S.mode === 'day' && S.weather !== 'fog')) {
     audio.moan(0.35);
@@ -1263,6 +1283,7 @@ function updateLeeches(dt) {
       player.vel.y = 7;
       player.onGround = false;
       audio.hit();
+      hurtPlayer(COMBAT.BITE.leech, 'leech');
       if (player.carried.length) {
         const t = player.carried.pop();
         player.refreshPack();
@@ -2307,8 +2328,12 @@ function explodeBomb(b) {
     ambient.spray.spawn(c.x, c.y + 0.3, c.z, (Math.random() - 0.5) * 7, 2 + Math.random() * 5, (Math.random() - 0.5) * 7, 1.2, 0.5 + Math.random() * 0.5);
   }
   const hit = ARMS.inBlast({ x: c.x, z: c.z }, city.leeches);
-  for (const i of hit) killLeech(city.leeches[i]);
-  for (const D of deeplings) if (D.active && D.pos.distanceTo(c) < ARMS.BOMB_SCARE_RADIUS) D.scare();
+  for (const i of hit) hitEnemy(city.leeches[i], 'leech', COMBAT.weaponDamage('bomb'));
+  for (const D of deeplings) {
+    if (!D.active || D.pos.distanceTo(c) >= ARMS.BOMB_SCARE_RADIUS) continue;
+    if (D.pos.distanceTo(c) < ARMS.BOMB_RADIUS + 2) hitEnemy(D, 'deepling', COMBAT.weaponDamage('bomb'));
+    else D.scare();
+  }
   if (hit.length) toast(hit.length === 1 ? 'Соль сожгла пиявку!' : `Соль сожгла пиявок: ${hit.length}!`, 'ok');
 }
 
@@ -2381,50 +2406,152 @@ function strike() {
   S.harpoonCd = HARPOON_CD[lvl];
   player.swing = 0.35;
   audio.tone({ type: 'triangle', f0: 300, f1: 120, dur: 0.18, vol: 0.12 });
-  const range = 3.6 + lvl * 0.8;
-  // бьём туда, куда смотрит камера, и разворачиваем ныряльщика
-  const fx = -Math.sin(yaw);
-  const fz = -Math.cos(yaw);
-  player.facing = yaw;
-  player.mesh.rotation.y = yaw;
+  const range = 3.8 + lvl * 0.8;
+  // кандидаты: живые пиявки и глубинники рядом; цель — ближайшая перед ныряльщиком
+  const enemies = [];
+  for (const L of city.leeches) if (!L.dead) enemies.push({ x: L.x, y: L.mesh.position.y, z: L.z, ref: L, kind: 'leech' });
+  for (const D of deeplings) if (D.active) enemies.push({ x: D.pos.x, y: D.pos.y, z: D.pos.z, ref: D, kind: 'deepling' });
+  const camDir = { x: -Math.sin(yaw), z: -Math.cos(yaw) };
+  const bodyDir = { x: -Math.sin(player.mesh.rotation.y), z: -Math.cos(player.mesh.rotation.y) };
+  const tgt = COMBAT.pickTarget(player.pos, [camDir, bodyDir], enemies, range, { dy: player.swimming ? 4 : 2.6 });
   let hit = 0;
-  for (const L of city.leeches) {
-    if (L.dead) continue;
-    const dx = L.x - player.pos.x;
-    const dz = L.z - player.pos.z;
-    const d = Math.hypot(dx, dz);
-    if (d > range || Math.abs(L.mesh.position.y - player.pos.y) > 2.5) continue;
-    if (d > 1 && (dx * fx + dz * fz) / d < 0.2) continue;
-    if (S.arms.spear) {
-      killLeech(L);
-      toast('Острога пронзила пиявку!', 'ok');
-    } else {
-      L.push = { x: dx / (d || 1), z: dz / (d || 1), t: 0.45 };
-      L.cool = 3;
-    }
+  if (tgt) {
+    // разворачиваемся к цели — удар всегда в её сторону
+    const face = Math.atan2(-(tgt.x - player.pos.x), -(tgt.z - player.pos.z));
+    player.facing = face;
+    player.mesh.rotation.y = face;
+    const dmg = COMBAT.weaponDamage('spear', { spear: S.arms.spear, harpoonLvl: lvl });
+    hitEnemy(tgt.ref, tgt.kind, dmg);
+    hit++;
+  } else {
+    player.facing = yaw;
+    player.mesh.rotation.y = yaw;
+  }
+  if (thief.scare(player.pos, range)) {
+    toast('Чайка с криком уносится прочь — рыба цела.', 'ok');
+    achieve(ach.unlock('gull'));
     hit++;
   }
-  for (const D of deeplings) {
-    if (!D.active) continue;
-    if (D.pos.distanceTo(player.pos) < range + 2.5) {
-      D.scare();
-      toast('Глубинник получил гарпуном и уплыл!', 'ok');
-      hit++;
+  if (hit) audio.hit();
+}
+
+// Попадание по врагу: урон, отдача, цифра урона, смерть
+function hitEnemy(ref, kind, dmg) {
+  const r = COMBAT.damage(ref.hp ?? ref.maxHp ?? 1, dmg);
+  ref.hp = r.hp;
+  ref.hitFlash = 0.25;
+  if (kind === 'leech') {
+    const dx = ref.x - player.pos.x;
+    const dz = ref.z - player.pos.z;
+    const d = Math.hypot(dx, dz) || 1;
+    floatNumber(ref.x, ref.mesh.position.y + 1, ref.z, `−${dmg}`);
+    for (let i = 0; i < 8; i++) ambient.spray.spawn(ref.x, ref.mesh.position.y + 0.4, ref.z, (Math.random() - 0.5) * 3, 1 + Math.random() * 2, (Math.random() - 0.5) * 3, 0.6, 0.25);
+    if (r.killed) {
+      killLeech(ref);
+      toast('Пиявка убита!', 'ok');
+    } else {
+      ref.push = { x: dx / d, z: dz / d, t: 0.35 };
+      ref.cool = Math.max(ref.cool, 1.4);
+    }
+  } else {
+    floatNumber(ref.pos.x, ref.pos.y + 1.5, ref.pos.z, `−${dmg}`);
+    for (let i = 0; i < 10; i++) ambient.bubbles.spawn(ref.pos.x, ref.pos.y, ref.pos.z, (Math.random() - 0.5) * 2, 1 + Math.random(), (Math.random() - 0.5) * 2, 1.5, 0.2);
+    if (r.killed) {
+      ref.setActive(false);
+      toast('Глубинник тяжело ранен и ушёл на глубину до утра!', 'ok');
+      achieve(ach.unlock('deepling'));
+    } else {
+      ref.scare();
+      toast(`Глубинник ранен (${ref.hp}/${ref.maxHp}) и отпрянул!`, 'ok');
     }
   }
-  if (hit) audio.hit();
+}
+
+// Ранение ныряльщика
+function hurtPlayer(amount, why) {
+  if (S.mode !== 'day' && S.mode !== 'closing') return;
+  S.hp = Math.max(0, S.hp - amount);
+  S.hurtT = 0;
+  document.body.classList.remove('hurt');
+  void document.body.offsetWidth;
+  document.body.classList.add('hurt');
+  floatNumber(player.pos.x, player.pos.y + 2.4, player.pos.z, `−${amount}`, 'me');
+  if (S.hp <= 0) {
+    S.wounded = why;
+    endDay('drowned');
+  }
+}
+
+// Всплывающие цифры урона
+const floatV = new THREE.Vector3();
+const floats = [];
+function floatNumber(x, y, z, text, cls = '') {
+  const el = document.createElement('div');
+  el.className = `dmg ${cls}`;
+  el.textContent = text;
+  $('enemy-bars').appendChild(el);
+  floats.push({ el, x, y, z, t: 0 });
+}
+// Полоски здоровья над ранеными или близкими врагами
+const bars = new Map();
+function updateCombatUi(dt) {
+  S.hurtT += dt;
+  S.hp = COMBAT.regen(S.hp, S.hurtT, dt);
+  $('hpbar').style.width = `${(S.hp / COMBAT.PLAYER_HP) * 100}%`;
+  $('hpbar').className = S.hp < 35 ? 'danger' : '';
+  const seen = new Set();
+  const show = (ref, x, y, z) => {
+    floatV.set(x, y, z).project(camera);
+    if (floatV.z > 1 || Math.abs(floatV.x) > 1.1 || Math.abs(floatV.y) > 1.1) return;
+    let el = bars.get(ref);
+    if (!el) {
+      el = document.createElement('div');
+      el.className = 'ebar';
+      el.innerHTML = '<i></i>';
+      $('enemy-bars').appendChild(el);
+      bars.set(ref, el);
+    }
+    seen.add(ref);
+    el.style.left = `${(floatV.x * 0.5 + 0.5) * innerWidth}px`;
+    el.style.top = `${(-floatV.y * 0.5 + 0.5) * innerHeight}px`;
+    el.firstChild.style.width = `${(ref.hp / ref.maxHp) * 100}%`;
+    el.classList.toggle('flash', (ref.hitFlash || 0) > 0);
+    ref.hitFlash = Math.max(0, (ref.hitFlash || 0) - dt);
+  };
+  if (S.mode === 'day' || S.mode === 'closing') {
+    for (const L of city.leeches) {
+      if (L.dead) continue;
+      const d = Math.hypot(L.x - player.pos.x, L.z - player.pos.z);
+      if (d < 14 || L.hp < L.maxHp) show(L, L.x, L.mesh.position.y + 1.2, L.z);
+    }
+    for (const D of deeplings) {
+      if (!D.active) continue;
+      if (D.pos.distanceTo(player.pos) < 30) show(D, D.pos.x, D.pos.y + 1.8, D.pos.z);
+    }
+  }
+  for (const [ref, el] of bars) if (!seen.has(ref)) { el.remove(); bars.delete(ref); }
+  for (const f of floats) {
+    f.t += dt;
+    floatV.set(f.x, f.y + f.t * 1.2, f.z).project(camera);
+    f.el.style.left = `${(floatV.x * 0.5 + 0.5) * innerWidth}px`;
+    f.el.style.top = `${(-floatV.y * 0.5 + 0.5) * innerHeight}px`;
+    f.el.style.opacity = String(Math.max(0, 1 - f.t / 1.1));
+    if (f.t > 1.1 || floatV.z > 1) f.el.remove();
+  }
+  for (let i = floats.length - 1; i >= 0; i--) if (floats[i].t > 1.1) floats.splice(i, 1);
 }
 
 function updateDeeplings(dt) {
   for (const D of deeplings) {
     const r = D.update(dt, player, ocean, S.mode === 'closing', S.cycle * 0.15 - (S.up.fins || 0) * 0.2);
     if (r === 'bite') {
-      player.oxygen -= 0.3;
+      player.oxygen -= 0.12;
+      hurtPlayer(COMBAT.BITE.deepling, 'deepling');
       const away = player.pos.clone().sub(D.pos).setY(0).normalize();
       player.vel.addScaledVector(away, 9);
       audio.tone({ type: 'sawtooth', f0: 90, f1: 40, dur: 0.6, vol: 0.25, lp: 600 });
       audio.hit();
-      toast('Глубинник укусил! Кислород утекает — плыви к поверхности!', 'danger');
+      toast('Глубинник укусил! Отбивайся гарпуном (F) или плыви к поверхности!', 'danger');
     }
   }
 }
@@ -2794,7 +2921,7 @@ $('coop-btn').addEventListener('click', () => {
 });
 
 // для фона меню и для автотестов
-window.__deepback = { coop, schools, castaway, ach, giant, playOutro: (e) => playOutro(e), get outro() { return outro; }, traderBoat, openTrader: () => openTrader(), strikeBolt: () => strikeBolt(), get bolt() { return bolt; }, showArmsHint, planShot: (s) => planShot(s), cameraRoomy: (c, r) => cameraRoomy(c, r), ark, enterArk, killLeech, lineClear: (...a) => lineClear(...a), introPoint: (s) => introPoint(s), S, sky, envScene, whale, ambient, scene, post, voice, intro, startIntro, endIntro, player, city, ocean, deeplings, rain, navDots, startRun, startDay, endDay, keys, pressed, setYaw: (v) => (yaw = v) };
+window.__deepback = { coop, schools, hurtPlayer: (a, w) => hurtPlayer(a, w), COMBAT, thief, strike: () => strike(), castaway, ach, giant, playOutro: (e) => playOutro(e), get outro() { return outro; }, traderBoat, openTrader: () => openTrader(), strikeBolt: () => strikeBolt(), get bolt() { return bolt; }, showArmsHint, planShot: (s) => planShot(s), cameraRoomy: (c, r) => cameraRoomy(c, r), ark, enterArk, killLeech, lineClear: (...a) => lineClear(...a), introPoint: (s) => introPoint(s), S, sky, envScene, whale, ambient, scene, post, voice, intro, startIntro, endIntro, player, city, ocean, deeplings, rain, navDots, startRun, startDay, endDay, keys, pressed, setYaw: (v) => (yaw = v) };
 
 // ============ Цикл ============
 const clock = new THREE.Clock();

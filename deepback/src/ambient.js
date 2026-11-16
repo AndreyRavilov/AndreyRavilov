@@ -116,7 +116,7 @@ class Particles {
 }
 
 // Чайка: тушка и два крыла
-function makeGull(mat, darkMat) {
+export function makeGull(mat, darkMat) {
   const g = new THREE.Group();
   const body = new THREE.Mesh(new THREE.SphereGeometry(0.22, 8, 6), mat);
   body.scale.set(0.8, 0.7, 2);

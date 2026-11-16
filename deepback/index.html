@@ -87,6 +87,22 @@
   #tutorial li.done { color: var(--accent); text-decoration: line-through; text-decoration-color: rgba(88,240,216,.5); }
   #tutorial li.now { color: var(--ink); font-weight: 700; }
   body.photo #tutorial { opacity: 0; }
+  #hp { display: flex; gap: 8px; align-items: center; min-width: 170px; }
+  #hp span { color: #ff6b6b; }
+  #hp .bar { flex: 1; margin: 0; }
+  #hpbar { background: linear-gradient(90deg, #ff5a5a, #ff9a6a) !important; transition: width .2s; }
+  #hpbar.danger { animation: hpPulse .6s ease-in-out infinite alternate; }
+  @keyframes hpPulse { from { opacity: .55; } to { opacity: 1; } }
+  #enemy-bars { position: fixed; inset: 0; pointer-events: none; z-index: 3; overflow: hidden; }
+  .ebar { position: absolute; width: 56px; height: 8px; transform: translate(-50%, -100%); background: rgba(0,0,0,.55); border: 1px solid rgba(255,255,255,.35); border-radius: 3px; }
+  .ebar i { display: block; height: 100%; background: #ff4f6a; border-radius: 2px; transition: width .15s; }
+  .ebar.flash { border-color: #fff; box-shadow: 0 0 8px #fff; }
+  .dmg { position: absolute; transform: translate(-50%, -100%); font-weight: 800; font-size: 18px; color: #ffe08a; text-shadow: 0 2px 4px #000, 0 0 2px #000; }
+  .dmg.me { color: #ff6b6b; }
+  body.hurt::after { content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 4; box-shadow: inset 0 0 160px rgba(255,30,30,.65); animation: hurtFade .6s ease-out forwards; }
+  @keyframes hurtFade { from { opacity: 1; } to { opacity: 0; } }
+  @media (prefers-reduced-motion: reduce) { #hpbar.danger { animation: none; } body.hurt::after { animation-duration: .01s; } }
+  body.photo #enemy-bars { opacity: 0; }
   .toast.achv { border-color: #e8c547; color: #fff4c8; background: linear-gradient(90deg, rgba(60,48,12,.92), rgba(8,20,26,.88)); }
   .achv-list { list-style: none; padding: 0; margin: 6px 0 0; display: grid; gap: 4px; font-size: 14px; color: var(--muted); }
   .achv-list li.got { color: #fff0b8; }
@@ -229,6 +245,7 @@
   <div id="bottom">
     <div class="panel" id="cargo"></div>
     <div class="panel" id="weapons"></div>
+    <div class="panel" id="hp"><span>❤</span><div class="bar"><div id="hpbar"></div></div></div>
     <div class="panel hidden" id="oxy"><span>O₂</span><div class="bar"><div id="oxybar"></div></div></div>
   </div>
   <div id="navline" class="panel"><span class="lbl">НАВИГАТОР</span> <b id="nav-target">Авто</b> <span id="nav-dist"></span> <kbd>Tab</kbd></div>
@@ -248,6 +265,7 @@
 </div>
 
 <div id="net-labels"></div>
+<div id="enemy-bars"></div>
 <div id="threat" class="hidden"><i></i></div>
 <aside id="tutorial" class="hidden"><b>Первый день</b><ol></ol></aside>
 <div id="arkhud" class="hidden">

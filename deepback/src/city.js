@@ -1104,7 +1104,7 @@ export class City {
     g.position.set(x, y + 0.3, z);
     g.userData.dynamic = true;
     this.group.add(g);
-    this.leeches.push({ mesh: g, segs, x, z, dir: rng() * Math.PI * 2, cool: 0, phase: rng() * 6, push: null });
+    this.leeches.push({ mesh: g, segs, x, z, dir: rng() * Math.PI * 2, cool: 0, phase: rng() * 6, push: null, hp: 3, maxHp: 3 });
   }
 }
 
