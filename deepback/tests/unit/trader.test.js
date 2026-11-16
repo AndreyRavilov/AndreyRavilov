@@ -22,3 +22,11 @@ test('торговец не приходит в первый день, но пр
   assert.ok(n >= 4 && n <= 20, `за месяц приходов: ${n}`);
   assert.ok(OFFERS.length >= 3);
 });
+
+import { castawayComes } from '../../src/castaway.js';
+test('плот с выжившим: не раньше третьего дня, но приходит', () => {
+  for (const s of [1, 2, 3]) { assert.equal(castawayComes(s, 1), false); assert.equal(castawayComes(s, 2), false); }
+  let n = 0;
+  for (let c = 3; c < 43; c++) if (castawayComes(5, c)) n++;
+  assert.ok(n >= 4 && n <= 20, `за 40 дней плотов: ${n}`);
+});

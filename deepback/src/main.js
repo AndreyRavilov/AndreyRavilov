@@ -25,6 +25,7 @@ import { createCoop, RemoteDiver } from './coop.js';
 import { REGIONS, regionFor, buildRegion, animateRegion } from './regions.js';
 import { Schools } from './schools.js';
 import { DistantGiant } from './giant.js';
+import { Castaway, castawayComes } from './castaway.js';
 import { TraderBoat, OFFERS, trade, traderComes } from './trader.js';
 import { Achievements, ACHIEVEMENTS } from './achievements.js';
 import { REGION_KEYS } from './regions.js';
@@ -114,6 +115,7 @@ function achieve(a) {
 }
 const traderBoat = new TraderBoat(scene);
 const giant = new DistantGiant(scene);
+const castaway = new Castaway(scene);
 const schoolV = new THREE.Vector3();
 player.dress(DIVER_TEX.cloth, DIVER_TEX.patina);
 const audio = new Audio();
@@ -608,6 +610,8 @@ function startDay() {
   schools.reset(3 + (S.region === 'reef' ? 3 : 0), mulberry32(S.runSeed + S.cycle * 577));
   if (traderComes(S.runSeed, S.cycle) && !coop.isGuest) traderBoat.arrive(S.runSeed, S.cycle);
   else traderBoat.leave();
+  if (castawayComes(S.runSeed, S.cycle) && !coop.isGuest) castaway.arrive(S.runSeed, S.cycle);
+  else castaway.leave();
   city.generate(S.runSeed + S.cycle * 1013, S.cycle, S.lore, LORE.length, { keepsake: S.quest?.kind === 'keepsake', extraFood: R.extraFood, extraScrap: R.extraScrap, extraLeeches: Math.max(0, (R.extraLeeches || 0) + diff().leeches) });
   navGrid = NAV.buildGrid((x, z) => backU(x, z) >= 0.97 || city.overlaps(x, z, 0.8));
   S.navTimer = 0;
@@ -633,6 +637,7 @@ function startDay() {
   if (S.region !== 'open') toast(`🧭 ${R.name}. ${R.note}`, 'relic');
   achieve(ach.seaVisited(S.region, REGION_KEYS.length));
   if (S.cycle >= 10) achieve(ach.unlock('day10'));
+  if (castaway.active) toast('🛟 В море дрейфует плот, на нём кто-то машет! Доплыви и забери выжившего в Ковчег.', 'quest');
   if (traderBoat.active) toast('⛵ К краю спины причалила лодка торговца — у него есть что обменять.', 'quest');
   if (S.quest) toast(S.quest.text, 'quest');
   lockPointer();
@@ -729,6 +734,7 @@ function killResidents(n) {
 function endDay(outcome) {
   if (S.mode === 'night') return;
   traderBoat.leave();
+  castaway.leave();
   if (coop.isGuest) {
     // ночь считает хост; гость ждёт его сводку в Ковчеге
     if (outcome === 'drowned') {
@@ -1097,6 +1103,9 @@ function updateGame(dt) {
   traderBoat.update(S.time, ocean.level, (x, z) => ocean.surfaceAt(x, z));
   const atTrader = !near && !hatch && !school && traderBoat.active && S.mode === 'day' && Math.hypot(player.pos.x - traderBoat.pos.x, player.pos.z - traderBoat.pos.z) < 5;
   if (atTrader) prompt = '<b>E</b> — поговорить с торговцем';
+  castaway.update(dt, ocean.level, (x, z) => ocean.surfaceAt(x, z), p);
+  const atRaft = !near && !hatch && !school && !atTrader && castaway.near(player.pos);
+  if (atRaft) prompt = '<b>E</b> — забрать выжившего в Ковчег';
   $('prompt').innerHTML = prompt;
   $('prompt').classList.toggle('hidden', !prompt);
   if (pressed.has('KeyE')) {
@@ -1112,6 +1121,13 @@ function updateGame(dt) {
       } else toast('Слишком тяжело. Сначала сдай груз в Ковчег.', 'warn');
     } else if (hatch) deposit();
     else if (atTrader) openTrader();
+    else if (atRaft) {
+      castaway.leave();
+      S.pop++;
+      audio.deposit();
+      toast('Выживший держится за твой пояс — вы вместе доплывёте до Ковчега. Жителей стало на одного больше.', 'ok');
+      achieve(ach.unlock('rescue'));
+    }
     else if (school && player.weight + ITEM.food.weight <= player.capacity && schools.catchFrom(school)) {
       player.carried.push('food');
       player.refreshPack();
@@ -1582,6 +1598,7 @@ function startIntro(onDone) {
   setRegion('open');
   schools.reset(0, Math.random);
   traderBoat.leave();
+  castaway.leave();
   city.generate(S.runSeed + 1013, 1, S.lore, LORE.length, { keepsake: q?.kind === 'keepsake' });
   navGrid = NAV.buildGrid((x, z) => backU(x, z) >= 0.97 || city.overlaps(x, z, 0.8));
   intro.cams = null;
@@ -2670,7 +2687,7 @@ $('coop-btn').addEventListener('click', () => {
 });
 
 // для фона меню и для автотестов
-window.__deepback = { coop, schools, ach, giant, playOutro: (e) => playOutro(e), get outro() { return outro; }, traderBoat, openTrader: () => openTrader(), strikeBolt: () => strikeBolt(), get bolt() { return bolt; }, showArmsHint, planShot: (s) => planShot(s), cameraRoomy: (c, r) => cameraRoomy(c, r), ark, enterArk, killLeech, lineClear: (...a) => lineClear(...a), introPoint: (s) => introPoint(s), S, sky, envScene, whale, ambient, scene, post, voice, intro, startIntro, endIntro, player, city, ocean, deeplings, rain, navDots, startRun, startDay, endDay, keys, pressed, setYaw: (v) => (yaw = v) };
+window.__deepback = { coop, schools, castaway, ach, giant, playOutro: (e) => playOutro(e), get outro() { return outro; }, traderBoat, openTrader: () => openTrader(), strikeBolt: () => strikeBolt(), get bolt() { return bolt; }, showArmsHint, planShot: (s) => planShot(s), cameraRoomy: (c, r) => cameraRoomy(c, r), ark, enterArk, killLeech, lineClear: (...a) => lineClear(...a), introPoint: (s) => introPoint(s), S, sky, envScene, whale, ambient, scene, post, voice, intro, startIntro, endIntro, player, city, ocean, deeplings, rain, navDots, startRun, startDay, endDay, keys, pressed, setYaw: (v) => (yaw = v) };
 
 // ============ Цикл ============
 const clock = new THREE.Clock();

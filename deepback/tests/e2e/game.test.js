@@ -717,3 +717,25 @@ test('сложность: выбор в меню меняет длину дня 
   assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('deepback-settings-v1')).diff), 'easy');
   assert.deepEqual(page.errors, []);
 });
+
+test('плот с выжившим: доплыть и забрать — жителей становится больше', async (t) => {
+  const page = await openGame(env); t.after(() => page.context().close().catch(() => {}));
+  await startNewRun(page);
+  await game(page, async () => {
+    const d = window.__deepback;
+    const { castawayComes } = await import('./src/castaway.js');
+    for (let c = 3; c < 60; c++) if (castawayComes(d.S.runSeed, c)) { d.S.cycle = c; d.S.pop = 12; d.S.food = 9; d.S.fuel = 5; d.startDay(); break; }
+  });
+  assert.ok(await game(page, () => window.__deepback.castaway.active));
+  const pop0 = await game(page, () => window.__deepback.S.pop);
+  await waitFor(page, () => {
+    const d = window.__deepback;
+    const c = d.castaway.pos;
+    d.player.pos.set(c.x + 1, c.y - 1.2, c.z + 1);
+    d.player.vel.set(0, 0, 0);
+    return /забрать выжившего/.test(document.getElementById('prompt').textContent);
+  });
+  await page.keyboard.press('KeyE');
+  await waitFor(page, (n) => window.__deepback.S.pop === n + 1 && !window.__deepback.castaway.active, pop0);
+  assert.deepEqual(page.errors, []);
+});
