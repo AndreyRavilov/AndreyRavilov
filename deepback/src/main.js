@@ -448,6 +448,7 @@ function autoQuality(dt) {
     autoLevel = autoLevel === 'high' ? 'medium' : 'low';
     fpsMeter.low = 0;
     post.setQuality(autoLevel, sun);
+    whale.userData.setDetail?.(autoLevel);
     toast(`Графика снижена до «${autoLevel === 'medium' ? 'среднего' : 'низкого'}» качества для плавности. Изменить — в паузе.`);
   }
 }
@@ -473,6 +474,7 @@ function applySettings() {
   const q = (!qualityChosen && URL_QUALITY) || (settings.quality === 'auto' ? autoLevel : settings.quality);
   $('set-quality').value = settings.quality;
   if (post.level !== q) post.setQuality(q, sun);
+  whale.userData.setDetail?.(q);
   try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch (e) { /* ignore */ }
 }
 $('set-volume').addEventListener('input', (e) => { settings.volume = e.target.value / 100; applySettings(); });

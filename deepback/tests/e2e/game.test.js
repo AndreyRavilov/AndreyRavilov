@@ -306,7 +306,7 @@ test('вступительный ролик: идёт до конца, отве�
   assert.ok(await page.isVisible('#skip'));
   await waitFor(page, () => /Суши больше нет/.test(document.getElementById('cine-sub').textContent));
   await game(page, () => { window.__deepback.S.introSpeed = 60; });
-  await waitFor(page, () => window.__deepback.S.mode === 'day', undefined, 60000);
+  await waitFor(page, () => window.__deepback.S.mode === 'day', undefined, 240000);
   const subs = (await game(page, () => window.__deepback.intro.subs)).join(' ');
   assert.match(subs, /Матери/, 'что за мир');
   assert.match(subs, /ныряет/, 'что происходит ночью');

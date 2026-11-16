@@ -148,9 +148,9 @@ export function buildWhale() {
 
   // --- Ракушки-наросты: «вулканчики» гроздьями ---
   // конус из шести известковых пластин: рёбра по кругу, рваный верхний край
-  const barnGeo = new THREE.CylinderGeometry(0.17, 0.42, 0.38, 18, 3, true);
-  {
-    const ps = barnGeo.attributes.position;
+  const makeBarn = (radial, rows) => {
+    const geo = new THREE.CylinderGeometry(0.17, 0.42, 0.38, radial, rows, true);
+    const ps = geo.attributes.position;
     for (let k = 0; k < ps.count; k++) {
       const x = ps.getX(k);
       const y = ps.getY(k);
@@ -161,9 +161,13 @@ export function buildWhale() {
       const jag = top > 0.95 ? 1 - 0.18 * Math.abs(Math.sin(a * 6)) : 1;
       ps.setXYZ(k, x * plate, y * jag, z * plate);
     }
-    barnGeo.computeVertexNormals();
-  }
-  barnGeo.translate(0, 0.17, 0);
+    geo.computeVertexNormals();
+    geo.translate(0, 0.17, 0);
+    return geo;
+  };
+  const barnGeo = makeBarn(18, 3);
+  // упрощённая ракушка для слабых машин: издалека не отличить, треугольников вчетверо меньше
+  const barnGeoLo = makeBarn(12, 1);
   // отверстие утоплено внутрь и прикрыто створками, а не чёрная крышка поверх
   const capGeo = new THREE.ConeGeometry(0.15, 0.12, 9, 1, true);
   capGeo.rotateX(Math.PI);
@@ -237,6 +241,7 @@ export function buildWhale() {
   const puddles = new THREE.InstancedMesh(pudGeo, pudMat, pudN);
   // --- Мох и тина кочками вокруг луж и ракушек ---
   const mossGeo = new THREE.IcosahedronGeometry(1, 1); // кочка: неровный комок, низ уходит в кожу
+  const mossGeoLo = new THREE.IcosahedronGeometry(1, 0);
   const mossMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1 });
   const mossN = 1600;
   const moss = new THREE.InstancedMesh(mossGeo, mossMat, mossN);
@@ -338,6 +343,13 @@ export function buildWhale() {
     ki++;
   }
   g.add(kelp);
+
+  // Детализация по качеству графики: на низком — простые ракушки и кочки
+  g.userData.setDetail = (level) => {
+    const lo = level === 'low';
+    barn.geometry = lo ? barnGeoLo : barnGeo;
+    moss.geometry = lo ? mossGeoLo : mossGeo;
+  };
 
   return g;
 }
