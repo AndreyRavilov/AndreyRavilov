@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { mergeChildren } from './merge.js';
 import { STEP, inside, ITEM } from './city.js';
 import { backHeight } from './whale.js';
 
@@ -194,6 +195,10 @@ export class Player {
       keepsake: new THREE.MeshStandardMaterial({ color: 0xffb3d1, emissive: 0xff5fa2, emissiveIntensity: 1 }),
       relic: new THREE.MeshStandardMaterial({ color: 0xffe9a8, emissive: 0x5ff0ff, emissiveIntensity: 1.4 }),
     };
+    // неподвижные детали каждой части тела — одной сеткой на материал
+    mergeChildren(g, new Set([handBomb]));
+    mergeChildren(head);
+    for (const part of [...this.arms, ...this.legs]) mergeChildren(part);
     g.traverse((c) => c.isMesh && (c.castShadow = true));
     return g;
   }

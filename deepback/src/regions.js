@@ -4,6 +4,7 @@
 // декорации строятся из three.js без холста, тоже работают в тестах.
 import * as THREE from 'three';
 import { WHALE } from './whale.js';
+import { mergeChildren } from './merge.js';
 
 export const REGIONS = {
   open: {
@@ -84,7 +85,7 @@ const MAT = {
   hullRust: new THREE.MeshStandardMaterial({ color: 0x6a3a22, roughness: 0.85, metalness: 0.3 }),
   mast: new THREE.MeshStandardMaterial({ color: 0x4a3a2c, roughness: 0.9 }),
   sail: new THREE.MeshStandardMaterial({ color: 0x9a9284, roughness: 1, side: THREE.DoubleSide, transparent: true, opacity: 0.85 }),
-  coral: [0xff7a6a, 0xffb347, 0xc86bd8, 0xf2e3a8, 0x5fd0b0].map((c) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.7, emissive: c, emissiveIntensity: 0.12 })),
+  coral: [0xff7a6a, 0xffb347, 0xc86bd8, 0xf2e3a8, 0x5fd0b0].map((c) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.7, emissive: c, emissiveIntensity: 0.12, side: THREE.DoubleSide })),
   glowWisp: new THREE.MeshBasicMaterial({ color: 0x6ff6ff, transparent: true, opacity: 0.6, blending: THREE.AdditiveBlending, depthWrite: false }),
 };
 
@@ -177,8 +178,6 @@ function reef(r) {
       }
     } else {
       m = new THREE.Mesh(new THREE.CircleGeometry(0.7 + r() * 0.6, 12, 0, Math.PI), mat);
-      m.material = mat.clone();
-      m.material.side = THREE.DoubleSide;
       m.rotation.y = r() * Math.PI;
     }
     m.position.set((r() - 0.5) * 6, 0, (r() - 0.5) * 6);
@@ -202,15 +201,17 @@ export function buildRegion(key, seed, level) {
       b.rotation.y = r() * Math.PI;
       g.add(b);
     }
-    // мелкое крошево льдин у самых боков
-    for (let i = 0; i < 60; i++) {
+    // мелкое крошево льдин у самых боков — один инстансированный объект на волне
+    const n = 60;
+    const floes = new THREE.InstancedMesh(new THREE.CylinderGeometry(1, 1.2, 0.4, 6), MAT.ice, n);
+    floes.userData.items = [];
+    for (let i = 0; i < n; i++) {
       const p = around(r, 2, 26);
-      const f = new THREE.Mesh(new THREE.CylinderGeometry(0.6 + r() * 1.4, 0.8 + r() * 1.4, 0.4, 6), MAT.ice);
-      f.position.set(p.x, level + 0.05, p.z);
-      f.rotation.y = r() * Math.PI;
-      f.userData.float = true;
-      g.add(f);
+      floes.userData.items.push({ x: p.x, z: p.z, s: 0.6 + r() * 1.4, ry: r() * Math.PI });
     }
+    floes.userData.floes = true;
+    floes.frustumCulled = false;
+    g.add(floes);
   } else if (key === 'wrecks') {
     for (let i = 0; i < 11; i++) {
       const p = around(r, 12, 90);
@@ -229,23 +230,61 @@ export function buildRegion(key, seed, level) {
       g.add(rf);
     }
   } else if (key === 'glow') {
-    // огоньки-медузы под поверхностью вокруг кита
-    for (let i = 0; i < 70; i++) {
+    // огоньки-медузы под поверхностью вокруг кита — один инстансированный объект
+    const n = 70;
+    const wisps = new THREE.InstancedMesh(new THREE.SphereGeometry(1, 8, 6), MAT.glowWisp, n);
+    const m4 = new THREE.Matrix4();
+    wisps.userData.items = [];
+    for (let i = 0; i < n; i++) {
       const p = around(r, -6, 60);
-      const w = new THREE.Mesh(new THREE.SphereGeometry(0.25 + r() * 0.35, 8, 6), MAT.glowWisp);
-      w.position.set(p.x, level - 1 - r() * 6, p.z);
-      w.userData.bob = r() * Math.PI * 2;
-      g.add(w);
+      const it = { x: p.x, y: level - 1 - r() * 6, z: p.z, s: 0.25 + r() * 0.35, ph: r() * Math.PI * 2 };
+      wisps.userData.items.push(it);
+      wisps.setMatrixAt(i, m4.makeScale(it.s, it.s, it.s).setPosition(it.x, it.y, it.z));
     }
+    wisps.userData.bobWisps = true;
+    wisps.frustumCulled = false;
+    g.add(wisps);
   }
+  // неподвижные декорации склеиваем; льдины и огоньки двигаются — их не трогаем
+  const moving = new Set(g.children.filter((c) => c.userData.floes || c.userData.bobWisps));
+  g.updateMatrixWorld(true);
+  for (const c of [...g.children]) {
+    if (moving.has(c) || !c.isGroup) continue;
+    c.traverse((m) => {
+      if (!m.isMesh) return;
+      const flat = new THREE.Mesh(m.geometry.clone().applyMatrix4(m.matrixWorld), m.material);
+      flat.castShadow = m.castShadow;
+      g.add(flat);
+    });
+    g.remove(c);
+  }
+  mergeChildren(g, moving);
   return g;
 }
+
+const WISP_M = new THREE.Matrix4();
+const FLOE_Q = new THREE.Quaternion();
+const FLOE_UP = new THREE.Vector3(0, 1, 0);
+const FLOE_P = new THREE.Vector3();
+const FLOE_S = new THREE.Vector3();
 
 // Покачивание: льдины на волне, огоньки поднимаются и опускаются
 export function animateRegion(g, t, surfaceAt) {
   if (!g) return;
   for (const c of g.children) {
-    if (c.userData.float) c.position.y = surfaceAt(c.position.x, c.position.z) + 0.05;
-    else if (c.userData.bob !== undefined) c.position.y += Math.sin(t * 0.8 + c.userData.bob) * 0.004;
+    if (c.userData.floes) {
+      const q = FLOE_Q;
+      c.userData.items.forEach((it, i) => {
+        q.setFromAxisAngle(FLOE_UP, it.ry + t * 0.02);
+        WISP_M.compose(FLOE_P.set(it.x, surfaceAt(it.x, it.z) + 0.05, it.z), q, FLOE_S.set(it.s, 1, it.s));
+        c.setMatrixAt(i, WISP_M);
+      });
+      c.instanceMatrix.needsUpdate = true;
+    }
+    else if (c.userData.bobWisps) {
+      const m4 = WISP_M;
+      c.userData.items.forEach((it, i) => c.setMatrixAt(i, m4.makeScale(it.s, it.s, it.s).setPosition(it.x, it.y + Math.sin(t * 0.8 + it.ph) * 0.6, it.z)));
+      c.instanceMatrix.needsUpdate = true;
+    }
   }
 }

@@ -27,7 +27,10 @@ test('у каждого моря есть название и описание, 
   for (const k of REGION_KEYS) {
     assert.ok(REGIONS[k].name && REGIONS[k].note);
     const g = buildRegion(k, 5, 3);
-    if (k !== 'open') assert.ok(g.children.length > 5, `${k}: пусто`);
+    let tris = 0;
+    g.traverse((m) => { if (m.isMesh) tris += (m.geometry.index ? m.geometry.index.count : m.geometry.attributes.position.count) / 3 * (m.isInstancedMesh ? m.count : 1); });
+    if (k !== 'open') assert.ok(tris > 500, `${k}: декораций почти нет (${tris} треугольников)`);
+    if (k !== 'open') assert.ok(g.children.length < 40, `${k}: декорации не склеены (${g.children.length} объектов)`);
   }
 });
 

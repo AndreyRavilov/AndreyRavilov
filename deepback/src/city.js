@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { WHALE, backHeight, backU, BLOWHOLE, pointOnBack } from './whale.js';
 import { boxProjectUV } from './textures.js';
 import { mergeGeometries } from '../vendor/addons/utils/BufferGeometryUtils.js';
+import { mergeChildren } from './merge.js';
 
 export const STEP = 0.7;
 export const HATCH = new THREE.Vector3(0, 0, 13);
@@ -1050,6 +1051,7 @@ export class City {
       const light = new THREE.PointLight(0x7ff6ff, 25, 18, 1.8);
       g.add(light);
     }
+    mergeChildren(g); // детали припаса — одной сеткой на материал
     // мягкое свечение вокруг припаса (в браузере — с текстурой пятна)
     const glowColor = { food: 0xcff6ff, fuel: 0xffb070, scrap: 0xd0d6ff, relic: 0x80ffff, keepsake: 0xff9fc8 }[type];
     const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: GLOW.tex, color: glowColor, transparent: true, opacity: GLOW.tex ? 0.75 : 0.25, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }));
