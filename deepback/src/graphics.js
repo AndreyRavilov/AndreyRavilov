@@ -300,10 +300,11 @@ export function addCaustics(mat, { wet = false } = {}) {
         vec2 mUv = vWPosC.xz * 0.011;
         float m1 = dot(texture2D(map, mUv).rgb, vec3(0.33));
         float m2 = dot(texture2D(map, mat2(0.8, -0.6, 0.6, 0.8) * vWPosC.xz * 0.027 + 0.37).rgb, vec3(0.33));
-        float macro = clamp((m1 * 0.6 + m2 * 0.4 - 0.36) * 3.2, -1.0, 1.0);
-        diffuseColor.rgb *= 1.0 + macro * 0.42;
+        // выборка из карты — линейная яркость, в среднем около 0.13: меряем отклонение от неё
+        float macro = clamp((m1 * 0.6 + m2 * 0.4) / 0.13 - 1.0, -1.0, 1.0);
+        diffuseColor.rgb *= 1.0 + macro * 0.35;
         // тёплые бурые разводы и холодный сланец сменяют друг друга
-        diffuseColor.rgb *= mix(vec3(0.92, 0.97, 1.04), vec3(1.08, 1.0, 0.9), smoothstep(-0.3, 0.5, m2 * 3.0 - m1 * 2.2));
+        diffuseColor.rgb *= mix(vec3(0.93, 0.98, 1.05), vec3(1.08, 1.0, 0.9), smoothstep(-0.3, 0.3, (m2 - m1) / 0.13));
         #endif` : '#include <color_fragment>')
       .replace('#include <roughnessmap_fragment>', wet ? `#include <roughnessmap_fragment>
         roughnessFactor *= mix(1.0, 0.3, wetK);` : '#include <roughnessmap_fragment>')

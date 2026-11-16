@@ -97,7 +97,12 @@ void main() {
   float slope = uWhale.z / (2.0 * sq) * length(gu);
   float dist = abs(over) / max(slope, 0.02);
   // узкая рваная кромка: ширина не больше метра, плотнее у самой воды, края растворяются в ряби
-  float shore = smoothstep(1.1, 0.0, dist) * smoothstep(1.12, 1.0, u) * smoothstep(0.3, 0.7, fn + smoothstep(0.6, 0.0, dist) * 0.4) * 0.8;
+  // накат: кромка пены дышит — волна набегает на бок и откатывается, по берегу бегут фазы
+  float lap = 0.55 + 0.45 * sin(uTime * 1.3 + (vWorld.x + vWorld.z) * 0.13 + fn * 3.0);
+  float shore = smoothstep(1.25 * lap + 0.2, 0.0, dist) * smoothstep(1.12, 1.0, u) * smoothstep(0.3, 0.7, fn + smoothstep(0.6, 0.0, dist) * 0.4) * 0.8;
+  // кружево: у самой кромки — сплошная нитка, дальше пена рвётся мелкими дырами
+  float lace = detail(vWorld.xz * 0.85 + vec2(uTime * 0.15, -uTime * 0.11));
+  shore *= smoothstep(0.38, 0.62, lace + smoothstep(0.22, 0.0, dist) * 0.6);
   float crest = smoothstep(0.78, 0.95, h1 + (vNormalW.y < 0.985 ? 0.1 : 0.0)) * 0.25;
   // пенные полосы по ветру: тянутся вдоль x, рвутся мелким шумом
   float sn = detail(vec2(vWorld.x * 0.01, vWorld.z * 0.05) + vec2(uTime * 0.01, 0.0));
