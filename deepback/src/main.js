@@ -1117,6 +1117,25 @@ function inHatch() {
   return Math.hypot(player.pos.x - HATCH.x, player.pos.z - HATCH.z) < r && Math.abs(player.pos.y - HATCH.y) < 3 + (S.up.winch ? 1.5 : 0);
 }
 
+// Вышел из воды — с костюма ещё несколько секунд стекают капли, а шлем блестит мокрым
+let wasSwimming = false;
+function updateDrips(dt) {
+  if (wasSwimming && !player.swimming) S.drip = 5;
+  wasSwimming = player.swimming;
+  // мокрая ткань темнее и блестит; высыхает вместе с каплями
+  const wet = player.swimming ? 1 : Math.max(0, (S.drip || 0) / 5);
+  player.suitMat.roughness = 0.92 - wet * 0.5;
+  player.suitMat.color.setHex(player.suitColor ?? 0xc9772c).multiplyScalar(1 - wet * 0.28);
+  if (!(S.drip > 0)) return;
+  S.drip -= dt;
+  const n = Math.random() < (S.drip / 5) * 0.9 ? 1 : 0;
+  for (let i = 0; i < n; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const r = 0.25 + Math.random() * 0.15;
+    ambient.spray.spawn(player.pos.x + Math.cos(a) * r, player.pos.y + 0.4 + Math.random() * 1.2, player.pos.z + Math.sin(a) * r, 0, -1.5, 0, 0.5, 0.05 + Math.random() * 0.04);
+  }
+}
+
 function updateGame(dt) {
   const p = Math.min(1, S.t / S.T);
   if (S.mode === 'day') {
@@ -1131,6 +1150,7 @@ function updateGame(dt) {
   ocean.update(S.time, level, player.pos.x, player.pos.z);
 
   player.update(dt, keys, yaw, world);
+  updateDrips(dt);
 
   // подбор и сдача
   const near = nearestPickup();

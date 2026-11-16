@@ -159,6 +159,7 @@ export function createCoop(ctx) {
     C.waiting = false;
     C.sleeping = false;
     C.color = 0;
+    ctx.player.suitColor = COLORS[0];
     ctx.player.suitMat.color.setHex(COLORS[0]);
     ctx.clearLabels();
   }
@@ -226,6 +227,7 @@ export function createCoop(ctx) {
     const want = meIdx >= 0 ? meIdx % COLORS.length : 0;
     if (want !== C.color) {
       C.color = want;
+      ctx.player.suitColor = COLORS[want];
       ctx.player.suitMat.color.setHex(COLORS[want]);
     }
     if (C.role === 'host') hostTick(dt);
