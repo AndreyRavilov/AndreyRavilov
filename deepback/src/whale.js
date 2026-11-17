@@ -232,18 +232,46 @@ export function buildWhale() {
       ps.setXY(k, ps.getX(k) * r, ps.getY(k) * r);
     }
     pudGeo.rotateX(-Math.PI / 2);
+    // 0 в середине лужи, 1 у края — для мягкой кромки
+    const edge = new Float32Array(ps.count);
+    for (let k = 1; k < ps.count; k++) edge[k] = 1;
+    pudGeo.setAttribute('edge', new THREE.BufferAttribute(edge, 1));
   }
   const pudMat = new THREE.MeshStandardMaterial({
     // лужа зеркалит небо: металличность даёт отражение, тёмный цвет — глубину воды
-    color: 0x3d4c55, roughness: 0.05, metalness: 0.75, envMapIntensity: 1.1, transparent: true, opacity: 0.9,
-    polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
+    color: 0x3d4c55, roughness: 0.05, metalness: 0.75, envMapIntensity: 0.9, transparent: true, opacity: 0.9,
+    polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2, depthWrite: false,
   });
+  // кромка лужи растворяется в мокрой коже, а не обрезана ножницами
+  pudMat.onBeforeCompile = (shader) => {
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nattribute float edge;\nvarying float vEdge;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvEdge = edge;');
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', '#include <common>\nvarying float vEdge;')
+      .replace('#include <dithering_fragment>', '#include <dithering_fragment>\ngl_FragColor.a *= 1.0 - smoothstep(0.55, 1.0, vEdge);');
+  };
   const pudN = 90;
   const puddles = new THREE.InstancedMesh(pudGeo, pudMat, pudN);
   // --- Мох и тина кочками вокруг луж и ракушек ---
   const mossGeo = new THREE.IcosahedronGeometry(1, 1); // кочка: неровный комок, низ уходит в кожу
   const mossGeoLo = new THREE.IcosahedronGeometry(1, 0);
   const mossMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1 });
+  // кочка мха: тёмная влажная у кожи, к верху — светлые сухие кончики, по всей — мелкая бархатная крапинка
+  mossMat.onBeforeCompile = (shader) => {
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vMossP;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvMossP = position;');
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', `#include <common>
+        varying vec3 vMossP;
+        float mossHash(vec3 p) { return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }`)
+      .replace('#include <color_fragment>', `#include <color_fragment>
+        float topK = smoothstep(-0.2, 0.9, vMossP.y);
+        float speck = mossHash(floor(vMossP * 18.0));
+        diffuseColor.rgb *= mix(0.55, 1.35, topK) * (0.8 + speck * 0.4);
+        diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(1.25, 1.2, 0.7), topK * speck * 0.6);`);
+  };
   const mossN = 1600;
   const moss = new THREE.InstancedMesh(mossGeo, mossMat, mossN);
   const mossColor = new THREE.Color();
@@ -285,7 +313,11 @@ export function buildWhale() {
       m.compose(p, q, sc);
       moss.setMatrixAt(mi, m);
       const g2 = rnd();
-      mossColor.setRGB(0.17 + g2 * 0.1, 0.2 + g2 * 0.1, 0.1 + g2 * 0.05, THREE.SRGBColorSpace);
+      // зелёный мох, жёлто-зелёная тина и изредка рыжий лишайник
+      const kind = rnd();
+      if (kind < 0.12) mossColor.setRGB(0.42 + g2 * 0.1, 0.25 + g2 * 0.06, 0.1, THREE.SRGBColorSpace);
+      else if (kind < 0.45) mossColor.setRGB(0.3 + g2 * 0.1, 0.33 + g2 * 0.1, 0.12 + g2 * 0.04, THREE.SRGBColorSpace);
+      else mossColor.setRGB(0.18 + g2 * 0.1, 0.25 + g2 * 0.1, 0.11 + g2 * 0.05, THREE.SRGBColorSpace);
       moss.setColorAt(mi, mossColor);
       mi++;
     }
