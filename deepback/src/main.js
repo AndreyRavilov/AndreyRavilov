@@ -2155,6 +2155,9 @@ let arkCamY = null;
 
 function enterArk() {
   arkCamY = null;
+  // подсказки первого дня в Ковчеге не нужны — прячем, даже если день кончился не по плану
+  tut.on = false;
+  $('tutorial').classList.add('hidden');
   S.mode = 'ark';
   S.paused = false;
   S.savedToday = false;

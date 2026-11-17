@@ -140,6 +140,7 @@ function hammock(mat, sleeper) {
 
 export class ArkInterior {
   constructor(TEX) {
+    this.TEX = TEX;
     const scene = (this.scene = new THREE.Scene());
     scene.background = new THREE.Color(0x07090b);
     scene.fog = new THREE.Fog(0x0b0d10, 14, 40);
@@ -505,28 +506,89 @@ export class ArkInterior {
     }
 
     // бочки и мешки
+    // бочка: пузатая, из клёпок, три железных обруча
+    const barrelGeo = new THREE.CylinderGeometry(0.4, 0.4, 0.95, 16, 6);
+    {
+      const ps = barrelGeo.attributes.position;
+      for (let i = 0; i < ps.count; i++) {
+        const y = ps.getY(i) / 0.475;
+        const bulge = 1 + 0.12 * (1 - y * y);
+        ps.setXYZ(i, ps.getX(i) * bulge, ps.getY(i), ps.getZ(i) * bulge);
+      }
+      barrelGeo.computeVertexNormals();
+    }
+    const barrelMat = std(0x7a4a2a, { roughness: 0.8 });
+    if (this.TEX) {
+      const st = this.TEX.planks([128, 84, 52], 256, { weathered: 0.15 });
+      st.map.repeat.set(3, 1);
+      st.bump.repeat.set(3, 1);
+      Object.assign(barrelMat, { map: st.map, bumpMap: st.bump, bumpScale: 1.5 });
+      barrelMat.color.set(0xffffff);
+    }
+    const hoopMat = std(0x2a2522, { metalness: 0.7, roughness: 0.45 });
     for (const [ang, n] of [[-1.8, 4], [0.62, 2], [-0.62, 3]]) {
       const [x, z] = at(ang, ARK_R - 1.0);
       for (let i = 0; i < n; i++) {
-        const b = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 0.95, 12), std(0x7a4a2a));
-        const off = (i - (n - 1) / 2) * 0.85;
+        const b = new THREE.Mesh(barrelGeo, barrelMat);
+        const off = (i - (n - 1) / 2) * 0.88;
         b.position.set(x + Math.cos(ang) * off, 0.48, z - Math.sin(ang) * off);
+        b.rotation.y = i * 1.3;
         b.castShadow = true;
         this.scene.add(b);
-        const hoop = new THREE.Mesh(new THREE.TorusGeometry(0.41, 0.03, 6, 16), std(0x222222, { metalness: 0.7 }));
-        hoop.rotation.x = Math.PI / 2;
-        hoop.position.copy(b.position);
-        this.scene.add(hoop);
+        for (const [hy, hr] of [[-0.36, 0.43], [0, 0.45], [0.36, 0.43]]) {
+          const hoop = new THREE.Mesh(new THREE.TorusGeometry(hr, 0.025, 6, 20), hoopMat);
+          hoop.rotation.x = Math.PI / 2;
+          hoop.position.set(b.position.x, b.position.y + hy, b.position.z);
+          this.scene.add(hoop);
+        }
       }
       block(x, z, 0.4 + n * 0.42);
     }
-    for (let i = 0; i < 3; i++) {
-      const [x, z] = at(-2.75 + i * 0.12, ARK_R - 0.9);
-      const sack = new THREE.Mesh(new THREE.SphereGeometry(0.42, 10, 8), std(0xb8a07a, { roughness: 1 }));
-      sack.scale.set(1, 1.25, 0.85);
-      sack.position.set(x, 0.48, z);
+    // мешки: осевшие под своим весом, горловина перетянута бечёвкой, мешковина
+    const sackGeo = new THREE.SphereGeometry(0.42, 18, 14);
+    {
+      const ps = sackGeo.attributes.position;
+      for (let i = 0; i < ps.count; i++) {
+        let x = ps.getX(i);
+        let y = ps.getY(i);
+        let z = ps.getZ(i);
+        const t = y / 0.42; // -1 низ, 1 верх
+        // низ сплющен и раздался, к верху мешок сужается в горловину
+        const wide = t < 0 ? 1 + 0.18 * -t : 1 - 0.55 * Math.pow(t, 2.2);
+        if (t < -0.55) y = -0.42 * 0.55 - (y + 0.42 * 0.55) * 0.25;
+        const a = Math.atan2(z, x);
+        const lump = 1 + 0.05 * Math.sin(a * 5 + t * 3) + 0.03 * Math.sin(a * 11);
+        x *= wide * lump;
+        z *= wide * lump;
+        ps.setXYZ(i, x, y * (t > 0 ? 1.15 : 1), z);
+      }
+      sackGeo.computeVertexNormals();
+    }
+    const sackMat = std(0xb8a07a, { roughness: 1 });
+    if (this.TEX && this.TEX.burlap) {
+      const bt = this.TEX.burlap();
+      Object.assign(sackMat, { map: bt.map, bumpMap: bt.bump, bumpScale: 1.2 });
+      sackMat.color.set(0xffffff);
+    }
+    const twine = std(0x6a5a3a, { roughness: 1 });
+    for (let i = 0; i < 4; i++) {
+      const [x, z] = at(-2.78 + i * 0.11, ARK_R - 0.9 - (i % 2) * 0.25);
+      const g = new THREE.Group();
+      const sack = new THREE.Mesh(sackGeo, sackMat);
       sack.castShadow = true;
-      this.scene.add(sack);
+      g.add(sack);
+      const tie = new THREE.Mesh(new THREE.TorusGeometry(0.1, 0.022, 6, 14), twine);
+      tie.rotation.x = Math.PI / 2;
+      tie.position.y = 0.37;
+      g.add(tie);
+      const tuft = new THREE.Mesh(new THREE.ConeGeometry(0.13, 0.16, 8, 1, true), sackMat);
+      tuft.rotation.x = Math.PI;
+      tuft.position.y = 0.47;
+      g.add(tuft);
+      g.position.set(x, 0.41, z);
+      g.rotation.set((i % 2 ? 0.12 : -0.08), i * 1.7, (i % 3 ? 0.1 : -0.06));
+      g.scale.setScalar(0.9 + (i % 3) * 0.1);
+      this.scene.add(g);
     }
 
     // стол с кружками

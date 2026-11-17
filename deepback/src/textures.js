@@ -546,3 +546,23 @@ export function boneTexture(w = 512, h = 64) {
   };
   return { map: t(map, true), bump: t(bump, false), rough: t(rough, false) };
 }
+
+// --- Мешковина: грубое полотняное плетение с выцветшими полосами ---
+export function burlap(size = 128) {
+  const weave = (u, v) => {
+    const a = Math.abs(Math.sin(u * size * 0.5 * Math.PI));
+    const b = Math.abs(Math.sin(v * size * 0.5 * Math.PI));
+    const over = (Math.floor(u * size * 0.25) + Math.floor(v * size * 0.25)) % 2;
+    return over ? a * 0.6 + b * 0.4 : a * 0.4 + b * 0.6;
+  };
+  const map = paint(size, (u, v) => {
+    const w = weave(u, v);
+    const n = fbm(u * 6, v * 6, 6, 3, 81);
+    const stripe = Math.abs(v - 0.5) < 0.06 ? 0.82 : 1; // полоса на мешке
+    const k = (0.62 + w * 0.3 + n * 0.22) * stripe;
+    return [clamp(178 * k), clamp(150 * k), clamp(104 * k)];
+  });
+  const bump = paint(size, (u, v) => clamp(90 + weave(u, v) * 140));
+  const t = { map: finish(map, 3), bump: finish(bump, 3, false) };
+  return t;
+}
