@@ -101,7 +101,7 @@ const DIVER_TEX = { cloth: TEX.canvasCloth(), patina: TEX.brassPatina() };
 dressMaterials(TEX);
 // каустика на коже Матери и на постройках
 addCaustics(whale.userData.skin, { wet: true });
-for (const k of ['steel', 'rust', 'arkWall', 'arkDome', 'bone', 'trim']) addCaustics(MATERIALS[k]);
+for (const k of ['steel', 'rust', 'arkWall', 'arkDome', 'bone', 'trim', 'door']) addCaustics(MATERIALS[k]);
 for (const mtl of MATERIALS.walls || []) addCaustics(mtl);
 for (const mtl of MATERIALS.roofs || []) addCaustics(mtl);
 const city = new City(scene);

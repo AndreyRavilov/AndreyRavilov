@@ -48,6 +48,7 @@ M.float = new THREE.MeshStandardMaterial({ color: 0xd9542e, roughness: 0.6 });
 M.driftwood = new THREE.MeshStandardMaterial({ color: 0x8a7a66, roughness: 0.95 });
 M.relicStone = new THREE.MeshStandardMaterial({ color: 0x6e7b7c, roughness: 0.85, emissive: 0x0c2a2c, emissiveIntensity: 0.5 });
 M.brass = new THREE.MeshStandardMaterial({ color: 0xb08a50, metalness: 0.85, roughness: 0.35 });
+M.door = new THREE.MeshStandardMaterial({ color: 0x3a2c22, roughness: 0.85 });
 M.net = new THREE.MeshStandardMaterial({ color: 0x3a3a30, roughness: 1, transparent: true, alphaTest: 0.3, side: THREE.DoubleSide });
 export const MATERIALS = M;
 // Текстура мягкого свечения задаётся из браузера (в Node её нет)
@@ -644,9 +645,18 @@ export class City {
       }
     }
     // дверь и окна
-    const door = new THREE.Mesh(new THREE.BoxGeometry(1.2, 2.2, 0.2), M.dark);
+    const door = new THREE.Mesh(new THREE.BoxGeometry(1.2, 2.2, 0.2), M.door);
     door.position.set(0, backHeight(x, z + hz) - base + 1.1, hz + 0.05);
     g.add(door);
+    // кованые петли-полосы и медная ручка
+    for (const hy of [0.65, -0.65]) {
+      const strap = new THREE.Mesh(new THREE.BoxGeometry(0.75, 0.07, 0.03), M.dark);
+      strap.position.set(-0.2, door.position.y + hy, hz + 0.165);
+      g.add(strap);
+    }
+    const knob = new THREE.Mesh(new THREE.SphereGeometry(0.055, 8, 6), M.brass);
+    knob.position.set(0.42, door.position.y - 0.05, hz + 0.2);
+    g.add(knob);
     // наличник и крылечко
     for (const [fx, fy, fw, fh] of [[-0.68, 0, 0.16, 2.5], [0.68, 0, 0.16, 2.5], [0, 1.2, 1.52, 0.18]]) {
       const tr = new THREE.Mesh(new THREE.BoxGeometry(fw, fh, 0.12), M.trim);
@@ -1442,6 +1452,13 @@ export function dressMaterials(TEX) {
   M.net.alphaMap.repeat.set(3, 2);
   M.net.needsUpdate = true;
   // кость арок: шероховатая, в трещинах
+  // двери: тёмные выветренные доски
+  const dr = TEX.planks([92, 70, 52], 256, { weathered: 0.35 });
+  M.door.map = dr.map;
+  M.door.bumpMap = dr.bump;
+  M.door.bumpScale = 1.4;
+  M.door.color.set(0xffffff);
+  M.door.needsUpdate = true;
   const bone = TEX.boneTexture();
   M.bone.map = bone.map;
   M.bone.color.set(0xffffff);
