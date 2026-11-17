@@ -1385,7 +1385,7 @@ export function dressMaterials(TEX) {
     mat.color.set(0xffffff);
     mat.needsUpdate = true;
   };
-  const dk = TEX.planks([170, 128, 88]);
+  const dk = TEX.planks([150, 118, 86], 256, { weathered: 0.75 }); // мостки выбелены солью и солнцем
   M.deck.map = dk.map;
   M.deck.bumpMap = dk.bump;
   M.deck.bumpScale = 1.2;

@@ -80,7 +80,7 @@ export function buildWhale() {
   geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
   // UV — проекция сверху в метрах: текстура кожи лежит ровно, без стяжки у полюсов
   const uv = geo.attributes.uv;
-  for (let i = 0; i < pos.count; i++) uv.setXY(i, pos.getX(i) / 16, pos.getZ(i) / 16 + (pos.getY(i) < 0 ? pos.getY(i) / 16 : 0));
+  for (let i = 0; i < pos.count; i++) uv.setXY(i, pos.getX(i) / 11, pos.getZ(i) / 11 + (pos.getY(i) < 0 ? pos.getY(i) / 11 : 0));
   geo.computeVertexNormals();
   const skin = new THREE.MeshStandardMaterial({ vertexColors: true, color: 0x7d8c94, roughness: 0.78, metalness: 0.05 });
   const body = new THREE.Mesh(geo, skin);

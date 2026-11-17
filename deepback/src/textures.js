@@ -89,7 +89,7 @@ function paint(size, fn) {
 const clamp = (v) => Math.max(0, Math.min(255, v));
 
 // --- Доски: вертикальная обшивка с волокнами, щелями и гвоздями ---
-export function planks(tint = [120, 95, 70], size = 256) {
+export function planks(tint = [120, 95, 70], size = 256, { weathered = 0 } = {}) {
   const N = 6; // досок на тайл
   const pick = (k) => hash(k, 3, 99);
   const col = paint(size, (u, v) => {
@@ -102,7 +102,21 @@ export function planks(tint = [120, 95, 70], size = 256) {
     if (lu < 0.04 || lu > 0.96) m *= 0.35; // щель между досками
     const nail = (Math.abs(lu - 0.5) < 0.05 && (Math.abs(v - 0.12) < 0.012 || Math.abs(v - 0.88) < 0.012)) ? 0.4 : 1;
     m *= nail;
-    return [clamp(tint[0] * m), clamp(tint[1] * m), clamp(tint[2] * m)];
+    let r = tint[0] * m;
+    let g = tint[1] * m;
+    let b = tint[2] * m;
+    if (weathered) {
+      // соль и солнце выбеливают дерево в серебристо-серый: каждая доска — по-своему
+      const w = weathered * (0.45 + hash(k, 5, 17) * 0.55) * (0.85 + grain * 0.3);
+      const grey = (r * 0.3 + g * 0.55 + b * 0.15) * 1.05;
+      r = r + (grey * 0.98 - r) * w;
+      g = g + (grey * 0.97 - g) * w;
+      b = b + (grey * 0.95 - b) * w;
+      // тёмные сырые пятна и потёки у концов доски
+      const stain = smoothstepJS(0.6, 0.8, fbm(u * 5 + k, v * 9, 9, 3, 18)) * 0.35 + smoothstepJS(0.85, 1, Math.abs(v - 0.5) * 2) * 0.25;
+      r *= 1 - stain; g *= 1 - stain * 0.9; b *= 1 - stain * 0.8;
+    }
+    return [clamp(r), clamp(g), clamp(b)];
   });
   const bump = paint(size, (u, v) => {
     const k = Math.floor(u * N);
