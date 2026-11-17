@@ -61,9 +61,11 @@ test('город с одинаковым сидом строится одина�
 test('постройки склеены в несколько сеток, припасы и пиявки остаются отдельными', () => {
   const city = makeCity(8, 3);
   const baked = city.group.children.filter((c) => c.userData.baked);
-  const loose = city.group.children.filter((c) => !c.userData.baked && !c.userData.dynamic);
+  const loose = city.group.children.filter((c) => !c.userData.baked && !c.userData.dynamic && !c.isInstancedMesh);
   assert.ok(baked.length > 3 && baked.length < 40, `склеенных сеток: ${baked.length}`);
   assert.equal(loose.length, 0, 'неподвижные постройки должны быть склеены');
+  // мелочь под ногами — инстансами, не больше четырёх отрисовок
+  assert.ok(city.group.children.filter((c) => c.isInstancedMesh).length <= 4);
   assert.equal(city.group.children.filter((c) => c.userData.dynamic).length, city.pickups.length + city.leeches.length);
 });
 

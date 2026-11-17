@@ -448,6 +448,8 @@ export class City {
       if (p) this.addLeech(xr, p.x, p.z);
     }
     this.bake();
+    // мелочь — после склейки: она и так инстансами, склейка её бы выбросила
+    this.addLitter(mulberry32((seed ^ 0x51ed270b) >>> 0));
   }
 
   // Неподвижные постройки склеиваются по материалам в несколько больших сеток:
@@ -1643,5 +1645,116 @@ City.prototype.addProps = function (rng) {
     }
     g.traverse((m) => m.isMesh && (m.castShadow = m.receiveShadow = true));
     this.group.add(g);
+  }
+};
+
+// Мелочь под ногами: ракушки, рыбьи скелетики, обрывки каната, щепа.
+// Всё — инстансами (четыре отрисовки на весь город), свой генератор — раскладка не сдвигается.
+let LITTER = null;
+function litterParts() {
+  if (LITTER) return LITTER;
+  // ракушка-гребешок: приплюснутый купол с рёбрами-веером
+  const shell = new THREE.SphereGeometry(0.12, 14, 5, 0, Math.PI * 2, 0, Math.PI / 2);
+  {
+    const ps = shell.attributes.position;
+    for (let i = 0; i < ps.count; i++) {
+      const x = ps.getX(i);
+      const z = ps.getZ(i);
+      const a = Math.atan2(z, x);
+      const rib = 1 + 0.08 * Math.abs(Math.sin(a * 7));
+      ps.setXYZ(i, x * rib, ps.getY(i) * 0.35 * rib, z * rib * 0.9);
+    }
+    shell.computeVertexNormals();
+  }
+  // скелетик рыбы: хребет, рёбра, голова-треугольник, хвост
+  const bones = [];
+  const spine = new THREE.BoxGeometry(0.42, 0.015, 0.015);
+  bones.push(spine);
+  for (let k = 0; k < 7; k++) {
+    const rib = new THREE.BoxGeometry(0.01, 0.01, 0.12 - Math.abs(k - 3) * 0.015);
+    rib.translate(-0.13 + k * 0.04, 0, 0);
+    bones.push(rib);
+  }
+  const head = new THREE.ConeGeometry(0.05, 0.11, 3);
+  head.rotateZ(Math.PI / 2);
+  head.scale(1, 0.4, 1);
+  head.translate(0.26, 0, 0);
+  bones.push(head);
+  const tail = new THREE.ConeGeometry(0.05, 0.08, 3);
+  tail.rotateZ(-Math.PI / 2);
+  tail.scale(1, 0.2, 1);
+  tail.translate(-0.25, 0, 0);
+  bones.push(tail);
+  const fishbone = mergeGeometries(bones.map((g) => g.toNonIndexed()));
+  fishbone.translate(0, 0.012, 0);
+  // обрывок каната — дуга
+  const rope = new THREE.TorusGeometry(0.22, 0.025, 5, 14, Math.PI * 1.3);
+  rope.rotateX(Math.PI / 2);
+  rope.translate(0, 0.02, 0);
+  // щепа и обломок доски
+  const chip = new THREE.BoxGeometry(0.28, 0.025, 0.07);
+  chip.translate(0, 0.012, 0);
+  const mats = { shell: new THREE.MeshStandardMaterial({ roughness: 0.55 }), bone: new THREE.MeshStandardMaterial({ roughness: 0.7 }), chip: new THREE.MeshStandardMaterial({ roughness: 0.9 }) };
+  LITTER = { shell, fishbone, rope, chip, mats };
+  return LITTER;
+}
+
+City.prototype.addLitter = function (r) {
+  const P = litterParts();
+  const kinds = [
+    { geo: P.shell, n: 260, mat: P.mats.shell, color: () => [0.82 + r() * 0.12, 0.74 + r() * 0.12, 0.62 + r() * 0.12] },
+    { geo: P.fishbone, n: 60, mat: P.mats.bone, color: () => [0.86, 0.83, 0.74] },
+    { geo: P.rope, n: 50, mat: M.rope, color: null },
+    { geo: P.chip, n: 120, mat: P.mats.chip, color: () => { const k = 0.4 + r() * 0.25; return [k * 1.05, k * 0.92, k * 0.78]; } },
+  ];
+  const m = new THREE.Matrix4();
+  const q = new THREE.Quaternion();
+  const q2 = new THREE.Quaternion();
+  const sc = new THREE.Vector3();
+  const pos = new THREE.Vector3();
+  const nrm = new THREE.Vector3();
+  const up = new THREE.Vector3(0, 1, 0);
+  const col = new THREE.Color();
+  for (const k of kinds) {
+    const mesh = new THREE.InstancedMesh(k.geo, k.mat, k.n);
+    mesh.userData.sharedGeo = true;
+    mesh.receiveShadow = true;
+    let i = 0;
+    for (let tries = 0; tries < k.n * 6 && i < k.n; tries++) {
+      // гуще у стен и вдоль проулков: точку берём рядом с домом, если повезёт
+      let x;
+      let z;
+      const c = this.colliders.length && r() < 0.6 ? this.colliders[Math.floor(r() * this.colliders.length)] : null;
+      if (c && c.type === 'box') {
+        const side = Math.floor(r() * 4);
+        const t = r();
+        x = side < 2 ? c.minX + (c.maxX - c.minX) * t : side === 2 ? c.minX - 0.3 - r() * 1.2 : c.maxX + 0.3 + r() * 1.2;
+        z = side >= 2 ? c.minZ + (c.maxZ - c.minZ) * t : side === 0 ? c.minZ - 0.3 - r() * 1.2 : c.maxZ + 0.3 + r() * 1.2;
+      } else {
+        const p = pointOnBack(r() * 0.85, r() * Math.PI * 2);
+        x = p.x;
+        z = p.z;
+      }
+      if (backU(x, z) > 0.86 || this.overlaps(x, z, 0.15)) continue;
+      const y = backHeight(x, z);
+      if (!isFinite(y)) continue;
+      const e = 0.3;
+      nrm.set(backHeight(x - e, z) - backHeight(x + e, z), 2 * e, backHeight(x, z - e) - backHeight(x, z + e)).normalize();
+      q.setFromUnitVectors(up, nrm);
+      q2.setFromAxisAngle(up, r() * Math.PI * 2);
+      q.multiply(q2);
+      const s = 0.7 + r() * 0.7;
+      sc.set(s, s, s);
+      pos.set(x, y, z);
+      m.compose(pos, q, sc);
+      mesh.setMatrixAt(i, m);
+      if (k.color) {
+        const [cr, cg, cb] = k.color();
+        mesh.setColorAt(i, col.setRGB(cr, cg, cb, THREE.SRGBColorSpace));
+      }
+      i++;
+    }
+    mesh.count = i;
+    this.group.add(mesh);
   }
 };
