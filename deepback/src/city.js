@@ -274,8 +274,11 @@ export class City {
       vertexShader: `varying float vV; varying vec3 vN; varying vec3 vView;
         void main(){ vV = uv.y; vN = normalize(normalMatrix * normal); vec4 mv = modelViewMatrix * vec4(position,1.0); vView = normalize(-mv.xyz); gl_Position = projectionMatrix * mv; }`,
       fragmentShader: `uniform vec3 uColor; uniform float opacity; varying float vV; varying vec3 vN; varying vec3 vView;
-        void main(){ float edge = pow(abs(dot(normalize(vN), normalize(vView))), 1.5); float fade = pow(1.0 - vV, 1.6);
-        gl_FragColor = vec4(uColor * edge * fade * opacity, 1.0); }`,
+        void main(){
+          // края конуса растворяются полностью: свет — это пыль в воздухе, а не твёрдый клин
+          float edge = pow(abs(dot(normalize(vN), normalize(vView))), 4.0);
+          float fade = pow(1.0 - vV, 2.2) * smoothstep(0.0, 0.06, vV);
+          gl_FragColor = vec4(uColor * edge * fade * opacity, 1.0); }`,
       transparent: true,
       blending: THREE.AdditiveBlending,
       depthWrite: false,

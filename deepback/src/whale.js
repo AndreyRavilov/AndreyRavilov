@@ -308,12 +308,22 @@ export function buildWhale() {
       ps.setX(k, ps.getX(k) * (1 - along * 0.75) * (1 + 0.12 * Math.sin(along * 14)));
     }
   }
-  const kelpMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.8, side: THREE.DoubleSide, emissive: 0x0d1a08, emissiveIntensity: 1 });
+  const kelpMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.55, side: THREE.DoubleSide, emissive: 0x0a1206, emissiveIntensity: 1 });
   kelpMat.onBeforeCompile = (shader) => {
     shader.uniforms.uKelpTime = KELP_TIME;
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', '#include <common>\nvarying vec2 vKUv;')
+      .replace('#include <color_fragment>', `#include <color_fragment>
+        // лист: тёмный у основания, светлеет и желтеет к краю, вдоль — жилка и продольные складки
+        float alongK = 1.0 - vKUv.y;
+        float rib = 1.0 - smoothstep(0.0, 0.07, abs(vKUv.x - 0.5));
+        float folds = 0.9 + 0.1 * sin(vKUv.x * 31.0 + alongK * 4.0);
+        diffuseColor.rgb *= mix(0.45, 1.1, alongK) * (1.0 - rib * 0.4) * folds;
+        diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(1.3, 1.12, 0.55), smoothstep(0.5, 1.0, alongK) * 0.6);`);
     shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', '#include <common>\nuniform float uKelpTime;')
+      .replace('#include <common>', '#include <common>\nuniform float uKelpTime;\nvarying vec2 vKUv;')
       .replace('#include <begin_vertex>', `#include <begin_vertex>
+        vKUv = uv;
         float along = -position.y; // 0 у основания, 1 на конце
         float ph = instanceMatrix[3].x * 0.7 + instanceMatrix[3].z * 0.4;
         transformed.x += sin(uKelpTime * 1.3 + ph + along * 3.0) * 0.35 * along;
@@ -339,7 +349,9 @@ export function buildWhale() {
     m.compose(p, q, sc);
     kelp.setMatrixAt(ki, m);
     const t2 = rnd();
-    kelpColor.setRGB(0.22 + t2 * 0.15, 0.32 + t2 * 0.15, 0.1 + t2 * 0.05, THREE.SRGBColorSpace);
+    // от бурой ламинарии до оливковой морской травы — без кислотной зелени
+    if (rnd() < 0.45) kelpColor.setRGB(0.3 + t2 * 0.1, 0.24 + t2 * 0.08, 0.09 + t2 * 0.03, THREE.SRGBColorSpace);
+    else kelpColor.setRGB(0.2 + t2 * 0.1, 0.27 + t2 * 0.1, 0.1 + t2 * 0.04, THREE.SRGBColorSpace);
     kelp.setColorAt(ki, kelpColor);
     ki++;
   }

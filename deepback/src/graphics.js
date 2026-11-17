@@ -310,6 +310,11 @@ export function addCaustics(mat, { wet = false } = {}) {
         roughnessFactor *= mix(1.0, 0.3, wetK);` : '#include <roughnessmap_fragment>')
       .replace('#include <dithering_fragment>', `#include <dithering_fragment>
         float depthC = uLevel - vWPosC.y;
+        // вода съедает свет: чем глубже, тем темнее и синее-зеленее (красный уходит первым)
+        if (depthC > 0.0) {
+          float ab = smoothstep(0.0, 9.0, depthC);
+          gl_FragColor.rgb *= mix(vec3(1.0), vec3(0.28, 0.55, 0.62), ab);
+        }
         if (depthC > 0.0 && uCStrength > 0.001) {
           // блики падают сверху: на крыши и спину — да, на отвесные бока и брюхо — нет
           vec3 nW = normalize((vec4(normal, 0.0) * viewMatrix).xyz);

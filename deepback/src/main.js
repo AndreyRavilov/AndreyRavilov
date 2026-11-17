@@ -200,8 +200,8 @@ scene.add(rain);
 // ============ Палитры времени суток ============
 const PAL = {
   day: { top: 0x3f86b8, hor: 0xd8e8ea, fog: 0xa9c8d0, sun: 0xfff0d8, sunI: 2.6, hemi: 0.85, water: 0x0f4a5c, shallow: 0x2f9a90 },
-  dusk: { top: 0x2b3566, hor: 0xf3a06a, fog: 0x9a6f6a, sun: 0xff9050, sunI: 1.6, hemi: 0.55, water: 0x1c3e58, shallow: 0x3f7f86 },
-  night: { top: 0x03050c, hor: 0x16263a, fog: 0x0c1620, sun: 0x8090ff, sunI: 0.3, hemi: 0.2, water: 0x07202c, shallow: 0x123c46 },
+  dusk: { top: 0x2b3566, hor: 0xf3a06a, fog: 0x9a6f6a, sun: 0xff9050, sunI: 1.6, hemi: 0.55, water: 0x172f48, shallow: 0x2a5866 },
+  night: { top: 0x03050c, hor: 0x16263a, fog: 0x0c1620, sun: 0x8090ff, sunI: 0.3, hemi: 0.2, water: 0x051620, shallow: 0x0b252d },
 };
 const tmpA = new THREE.Color();
 const tmpB = new THREE.Color();
@@ -1417,7 +1417,9 @@ function updateWeather(dt) {
       audio.thunder();
     }
   } else if (S.weather === 'fog') {
-    fogDay.lerp(FOG_COLOR, 0.6);
+    // туман светлый днём и тёмный ночью — иначе в сумерках всё тонет в молоке
+    const pT = Math.min(1, S.t / S.T);
+    fogDay.lerp(tmpA.copy(FOG_COLOR).multiplyScalar(Math.max(0.12, 1 - pT * 0.9)), 0.6);
     skyMat.uniforms.top.value.lerp(fogDay, 0.8);
     skyMat.uniforms.horizon.value.copy(fogDay);
   } else if (S.weather === 'calm') {
@@ -2926,7 +2928,7 @@ function updateAmbient(dt, p) {
     shore: shorePoint,
   });
   city.beam.rotation.y += dt * 0.5;
-  city.beamMat.uniforms.opacity.value = Math.max(0, Math.min(1, (p - 0.45) / 0.3)) * 0.5 * (S.underK > 0.5 ? 0 : 1);
+  city.beamMat.uniforms.opacity.value = Math.max(0, Math.min(1, (p - 0.45) / 0.3)) * 0.32 * (S.underK > 0.5 ? 0 : 1);
 }
 
 // Где солнце на экране — для лучей. Нет лучей ночью, под водой, в Ковчеге и если солнце за кадром.
@@ -2946,6 +2948,7 @@ function sunOnScreen() {
 
 // Небо, солнце, туман и «подводность» вокруг текущей камеры
 function cameraEnv(dark) {
+  S.envDark = dark;
   sky.position.copy(camera.position);
   stars.position.copy(camera.position);
   // тени считаются вокруг игрока, а в ролике — вокруг того, куда смотрит камера
@@ -3183,7 +3186,7 @@ $('coop-btn').addEventListener('click', () => {
 });
 
 // для фона меню и для автотестов
-window.__deepback = { jellies, throwHarpoon: () => throwHarpoon(), get thrown() { return thrown; }, coop, schools, updateDash: (dt) => updateDash(dt), hurtPlayer: (a, w) => hurtPlayer(a, w), COMBAT, thief, strike: () => strike(), castaway, ach, giant, playOutro: (e) => playOutro(e), get outro() { return outro; }, traderBoat, openTrader: () => openTrader(), strikeBolt: () => strikeBolt(), get bolt() { return bolt; }, showArmsHint, planShot: (s) => planShot(s), cameraRoomy: (c, r) => cameraRoomy(c, r), ark, enterArk, killLeech, lineClear: (...a) => lineClear(...a), introPoint: (s) => introPoint(s), S, sky, envScene, whale, ambient, scene, post, voice, intro, startIntro, endIntro, player, city, ocean, deeplings, rain, navDots, startRun, startDay, endDay, keys, pressed, setYaw: (v) => (yaw = v) };
+window.__deepback = { setRegion: (r) => setRegion(r), jellies, throwHarpoon: () => throwHarpoon(), get thrown() { return thrown; }, coop, schools, updateDash: (dt) => updateDash(dt), hurtPlayer: (a, w) => hurtPlayer(a, w), COMBAT, thief, strike: () => strike(), castaway, ach, giant, playOutro: (e) => playOutro(e), get outro() { return outro; }, traderBoat, openTrader: () => openTrader(), strikeBolt: () => strikeBolt(), get bolt() { return bolt; }, showArmsHint, planShot: (s) => planShot(s), cameraRoomy: (c, r) => cameraRoomy(c, r), ark, enterArk, killLeech, lineClear: (...a) => lineClear(...a), introPoint: (s) => introPoint(s), S, sky, envScene, whale, ambient, scene, post, voice, intro, startIntro, endIntro, player, city, ocean, deeplings, rain, navDots, startRun, startDay, endDay, keys, pressed, setYaw: (v) => (yaw = v) };
 
 // ============ Цикл ============
 const clock = new THREE.Clock();
@@ -3244,6 +3247,7 @@ function frame() {
   if (S.debugCam) {
     camera.position.fromArray(S.debugCam[0]);
     camera.lookAt(...S.debugCam[1]);
+    if (S.mode === 'day' || S.mode === 'closing') cameraEnv(S.envDark ?? 0); // туман и подводность — вокруг этой камеры
   }
   coop.frame(dt);
   pressed.clear();
