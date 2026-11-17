@@ -605,6 +605,42 @@ export class City {
         }
       }
     }
+    // свес крыши: торцевые доски по периметру — у крыши появляется толщина и тень под кромкой
+    {
+      const ew = uw + (top > base + rb ? 0.9 : 0.25);
+      const ed = ud + (top > base + rb ? 0.9 : 0.25);
+      for (const [fx, fz, fw, fd] of [[0, ed / 2, ew, 0.08], [0, -ed / 2, ew, 0.08], [ew / 2, 0, 0.08, ed], [-ew / 2, 0, 0.08, ed]]) {
+        const f = new THREE.Mesh(new THREE.BoxGeometry(fw, 0.22, fd), M.trim);
+        f.position.set(fx, rb + 0.02, fz);
+        g.add(f);
+      }
+    }
+    // водосток: жёлоб вдоль переднего края и труба в угол до самой земли, внизу — колено
+    const dr = mulberry32(Math.floor(x * 733 + z * 4111) >>> 0); // своё случайное — раскладка города не сдвигается
+    if (dr() < 0.7) {
+      const sx = (dr() < 0.5 ? -1 : 1) * (uw / 2 + 0.05);
+      const gut = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, uw + 0.3, 8, 1, false, 0, Math.PI), M.steel);
+      gut.rotation.z = Math.PI / 2;
+      gut.rotation.x = Math.PI;
+      gut.position.set(0, rb - 0.08, ud / 2 + 0.12);
+      g.add(gut);
+      const gy = backHeight(x + sx, z + hz) - base;
+      const len = rb - 0.15 - gy - 0.25;
+      if (len > 0.5) {
+        const pipe = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, len, 8), M.steel);
+        pipe.position.set(sx, gy + 0.25 + len / 2, hz + 0.1);
+        g.add(pipe);
+        const elbow = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.07, 0.35, 8), M.steel);
+        elbow.rotation.x = Math.PI / 2.6;
+        elbow.position.set(sx, gy + 0.2, hz + 0.22);
+        g.add(elbow);
+        for (let k = 1; k < 3; k++) {
+          const clamp = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.05, 0.12), M.dark);
+          clamp.position.set(sx, gy + 0.25 + (len * k) / 3, hz + 0.06);
+          g.add(clamp);
+        }
+      }
+    }
     // дверь и окна
     const door = new THREE.Mesh(new THREE.BoxGeometry(1.2, 2.2, 0.2), M.dark);
     door.position.set(0, backHeight(x, z + hz) - base + 1.1, hz + 0.05);
@@ -1345,6 +1381,15 @@ export function inside(c, x, z, r) {
 // TEX — модуль textures.js.
 export function dressMaterials(TEX) {
   GLOW.tex = TEX.glowDot();
+  // окна: днём — тёмная комната со шторами и бликом неба, вечером — тёплый свет из-за штор
+  const wg = TEX.windowGlass();
+  M.window.map = wg.map;
+  M.window.emissiveMap = wg.emissive;
+  M.window.color.set(0xffffff);
+  M.window.emissive.set(0xffffff);
+  M.window.roughness = 0.12;
+  M.window.metalness = 0.35;
+  M.window.needsUpdate = true;
   M.ao.map = TEX.glowDot();
   M.pool.map = TEX.glowDot();
   M.ao.opacity = 0.55;
@@ -1395,10 +1440,13 @@ export function dressMaterials(TEX) {
   M.net.alphaMap.repeat.set(3, 2);
   M.net.needsUpdate = true;
   // кость арок: шероховатая, в трещинах
-  const bone = TEX.whaleSkin();
+  const bone = TEX.boneTexture();
+  M.bone.map = bone.map;
+  M.bone.color.set(0xffffff);
   M.bone.bumpMap = bone.bump;
-  M.bone.bumpScale = 1.2;
+  M.bone.bumpScale = 1.4;
   M.bone.roughnessMap = bone.rough;
+  M.bone.roughness = 1;
   M.bone.needsUpdate = true;
   metal(M.steel, [96, 108, 114], 1, 1);
   metal(M.rust, [118, 78, 56], 1, 1);

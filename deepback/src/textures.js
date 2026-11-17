@@ -429,3 +429,120 @@ export function netTexture(size = 128) {
   t.wrapS = t.wrapT = THREE.RepeatWrapping;
   return t;
 }
+
+// --- Окно: комната за стеклом, занавески по бокам, грязь по углам стекла ---
+// map — как окно выглядит днём (тёмная комната, блик неба), emissive — как светится вечером
+export function windowGlass(size = 128) {
+  const mk = (night) => {
+    const c = canvas(size);
+    const x = c.getContext('2d');
+    // комната: тёплый свет лампы снизу-сбоку, к верху темнее
+    const g = x.createRadialGradient(size * 0.62, size * 0.78, 2, size * 0.55, size * 0.6, size * 0.85);
+    g.addColorStop(0, night ? '#fff0c0' : '#6a5a44');
+    g.addColorStop(0.45, night ? '#e8a050' : '#3a3026');
+    g.addColorStop(1, night ? '#5a2c14' : '#16120e');
+    x.fillStyle = g;
+    x.fillRect(0, 0, size, size);
+    // силуэт мебели: полка с банками в глубине
+    x.fillStyle = night ? 'rgba(60,30,12,0.75)' : 'rgba(10,8,6,0.6)';
+    x.fillRect(size * 0.3, size * 0.48, size * 0.42, size * 0.04);
+    for (let i = 0; i < 4; i++) x.fillRect(size * (0.33 + i * 0.09), size * 0.38, size * 0.05, size * 0.1);
+    // занавески: складки по бокам и подвязанный край
+    for (const side of [0, 1]) {
+      for (let k = 0; k < 6; k++) {
+        const w = size * 0.035;
+        const x0 = side ? size - (k + 1) * w : k * w;
+        const shade = 0.55 + 0.35 * Math.abs(Math.sin(k * 1.7));
+        x.fillStyle = night ? `rgba(${Math.round(190 * shade)},${Math.round(110 * shade)},${Math.round(60 * shade)},0.95)` : `rgba(${Math.round(120 * shade)},${Math.round(70 * shade)},${Math.round(50 * shade)},0.95)`;
+        x.beginPath();
+        x.moveTo(x0, 0);
+        x.lineTo(x0 + w, 0);
+        x.lineTo(x0 + w * (side ? 1.6 : 0.4), size * 0.6);
+        x.lineTo(x0 + w * (side ? 0.6 : -0.6), size);
+        x.lineTo(x0, size);
+        x.fill();
+      }
+    }
+    // карниз занавески
+    x.fillStyle = night ? 'rgba(40,20,10,0.9)' : 'rgba(20,14,10,0.9)';
+    x.fillRect(0, size * 0.04, size, size * 0.04);
+    // соль и грязь по углам стекла
+    const d = x.getImageData(0, 0, size, size);
+    for (let j = 0; j < size; j++) {
+      for (let i = 0; i < size; i++) {
+        const u = i / size;
+        const v = j / size;
+        const corner = Math.max(0, Math.max(Math.abs(u - 0.5), Math.abs(v - 0.5)) * 2 - 0.55) / 0.45;
+        const dirt = corner * (0.5 + fbm(u * 8, v * 8, 8, 3, 91) * 0.8);
+        const o = (j * size + i) * 4;
+        const k = night ? 1 - dirt * 0.55 : 1 - dirt * 0.2;
+        const add = night ? 0 : dirt * 40; // днём соль на стекле светлая
+        d.data[o] = clamp(d.data[o] * k + add);
+        d.data[o + 1] = clamp(d.data[o + 1] * k + add);
+        d.data[o + 2] = clamp(d.data[o + 2] * k + add * 1.05);
+      }
+    }
+    x.putImageData(d, 0, 0);
+    return finish(c);
+  };
+  return { map: mk(false), emissive: mk(true) };
+}
+
+// --- Старая кость арок: слоновая кость с желтизной, поры, продольные трещины,
+// у земли (оба конца дуги) — бурая грязь и зелёная тина. u — вдоль дуги, v — вокруг.
+export function boneTexture(w = 512, h = 64) {
+  const mk = (fn) => {
+    const c = document.createElement('canvas');
+    c.width = w;
+    c.height = h;
+    const ctx = c.getContext('2d');
+    const img = ctx.createImageData(w, h);
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const v = fn(x / w, y / h);
+        const i = (y * w + x) * 4;
+        if (typeof v === 'number') { img.data[i] = img.data[i + 1] = img.data[i + 2] = v; }
+        else { img.data[i] = v[0]; img.data[i + 1] = v[1]; img.data[i + 2] = v[2]; }
+        img.data[i + 3] = 255;
+      }
+    }
+    ctx.putImageData(img, 0, 0);
+    return c;
+  };
+  // поры и трещины в «метрической» сетке: вдоль дуги ~8 раз больше, чем вокруг
+  const pores = (u, v) => fbm(u * 192, v * 24, 192, 2, 71);
+  const crack = (u, v) => Math.max(0, 1 - Math.abs(fbm(u * 4, v * 2, 4, 3, 72) - 0.5) * 60) * smoothstepJS(0.4, 0.7, fbm(u * 8, v, 8, 2, 73));
+  const ends = (u) => smoothstepJS(0.16, 0.0, Math.min(u, 1 - u)); // у земли
+  const map = mk((u, v) => {
+    const yellow = fbm(u * 6, v * 2, 6, 4, 74);
+    const p = pores(u, v);
+    let r = 212, g = 206, b = 188;
+    const k = 0.82 + yellow * 0.25;
+    r *= k; g *= k * 0.98; b *= k * 0.9;
+    // желтизна старой кости пятнами
+    const y2 = smoothstepJS(0.5, 0.72, yellow);
+    r -= y2 * 8; g -= y2 * 12; b -= y2 * 24;
+    // поры темнее
+    const pk = smoothstepJS(0.66, 0.8, p) * 0.14;
+    r *= 1 - pk; g *= 1 - pk; b *= 1 - pk;
+    const cr = crack(u, v) * 0.35;
+    r *= 1 - cr; g *= 1 - cr; b *= 1 - cr;
+    // грязь и тина у земли
+    const e = ends(u) * (0.7 + fbm(u * 20, v * 3, 20, 3, 75) * 0.5);
+    const algae = smoothstepJS(0.45, 0.7, fbm(u * 14, v * 2, 14, 3, 76)) * e;
+    r = r * (1 - e * 0.55) + 70 * e * 0.55; g = g * (1 - e * 0.55) + 60 * e * 0.55; b = b * (1 - e * 0.55) + 44 * e * 0.55;
+    r = r * (1 - algae * 0.5) + 60 * algae * 0.5; g = g * (1 - algae * 0.5) + 82 * algae * 0.5; b = b * (1 - algae * 0.5) + 40 * algae * 0.5;
+    return [clamp(r), clamp(g), clamp(b)];
+  });
+  const bump = mk((u, v) => clamp(150 - smoothstepJS(0.6, 0.8, pores(u, v)) * 70 - crack(u, v) * 110 + fbm(u * 16, v * 4, 16, 3, 77) * 40));
+  const rough = mk((u, v) => clamp(200 - ends(u) * 70 + pores(u, v) * 40));
+  const t = (c, srgb) => {
+    const tx = new THREE.CanvasTexture(c);
+    tx.wrapS = tx.wrapT = THREE.RepeatWrapping;
+    tx.anisotropy = ANISO;
+    made.push(tx);
+    if (srgb) tx.colorSpace = THREE.SRGBColorSpace;
+    return tx;
+  };
+  return { map: t(map, true), bump: t(bump, false), rough: t(rough, false) };
+}
